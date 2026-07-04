@@ -54,6 +54,14 @@ cd .zephyr && IDF_PATH=../.esp-idf IDF_TOOLS_PATH=../.espressif ZEPHYR_TOOLCHAIN
 
 The build recipe exports ESP-IDF's local tool paths first, so CMake, Ninja, OpenOCD, esptool, and the ESP32-C3 RISC-V compiler come from gitignored project folders after setup. Zephyr still needs the devicetree compiler executable `dtc` from the host environment.
 
+Remove generated build and test output while keeping installed toolchains and workspaces:
+
+```sh
+just clean
+```
+
+This removes `build/` and build-only ccache data, but leaves `.venv/`, `.zephyr/`, `.esp-idf/`, and `.espressif/` intact.
+
 Flash the connected board:
 
 ```sh
@@ -81,13 +89,13 @@ screen /dev/tty.usbmodem1101 115200
 Run tests after `just install`:
 
 ```sh
-cd .zephyr && ../.venv/bin/west -z zephyr twister -T ../tests --outdir ../twister-out
+cd .zephyr && ../.venv/bin/west -z zephyr twister -T ../tests --outdir ../build/twister-out
 ```
 
 On macOS, host-only Twister discovery can be checked with:
 
 ```sh
-cd .zephyr && ZEPHYR_TOOLCHAIN_VARIANT=host ../.venv/bin/west -z zephyr twister -T ../tests --platform native_sim --outdir ../twister-out
+cd .zephyr && ZEPHYR_TOOLCHAIN_VARIANT=host ../.venv/bin/west -z zephyr twister -T ../tests --platform native_sim --outdir ../build/twister-out
 ```
 
 Zephyr's `native_sim` execution target is Linux-only, so this command may discover the tests but filter them on macOS.
@@ -371,9 +379,10 @@ Example commands:
 ```sh
 just install
 just build
+just clean
 just flash
 just log
-cd .zephyr && ../.venv/bin/west -z zephyr twister -T ../tests --outdir ../twister-out
+cd .zephyr && ../.venv/bin/west -z zephyr twister -T ../tests --outdir ../build/twister-out
 ```
 
 A custom board definition can be added later as `cyberbrick_esc_esp32c3`, but early development may use an existing ESP32-C3 Zephyr board target plus an application overlay.

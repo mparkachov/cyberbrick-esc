@@ -4,6 +4,7 @@ title: Documentation Completion
 status: To Do
 assignee: []
 created_date: '2026-07-04 19:32'
+updated_date: '2026-07-04 20:25'
 labels:
   - docs
   - safety
@@ -24,8 +25,8 @@ Update README for the actual MVP workflow, implemented behavior, validation comm
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 README documents just install, just build, just flash, just log, and Twister test commands.
-- [ ] #2 README documents required wiring, 3.3 V signal limits, GPIO pin map, center-neutral behavior, and failsafe behavior.
-- [ ] #3 README documents hardware validation precautions for /dev/tty.usbmodem1101.
-- [ ] #4 README clearly lists intentionally unsupported protocols and rover/autonomy features.
+- [ ] #1 README documents required wiring, 3.3 V signal limits, GPIO pin map, center-neutral behavior, and failsafe behavior.
+- [ ] #2 README documents hardware validation precautions for /dev/tty.usbmodem1101.
+- [ ] #3 README clearly lists intentionally unsupported protocols and rover/autonomy features.
+- [ ] #4 README documents just install, just build, just clean, just flash, just log, and Twister test commands.
 <!-- AC:END -->

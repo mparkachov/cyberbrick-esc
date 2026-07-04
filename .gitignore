@@ -3,7 +3,6 @@
 .espressif/
 .venv/
 build/
-twister-out*/
 
 __pycache__/
 .pytest_cache/

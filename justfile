@@ -9,6 +9,9 @@ esp_tools_path := ".espressif"
 install:
     python3 scripts/zephyr_install.py
 
+clean:
+    rm -rf build .cache/ccache
+
 build:
     #!/usr/bin/env bash
     set -euo pipefail
