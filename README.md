@@ -18,6 +18,81 @@ CyberBrick ESC targets this hardware combination:
 
 The firmware is intended to be built with stock Zephyr and stock Zephyr tooling wherever possible.
 
+## Build, flash, and log workflow
+
+The project uses `just` as a thin command runner around stock Zephyr tools.
+Python tooling is installed into a local virtual environment with `uv`.
+
+Required host commands before setup:
+
+- `python3`
+- `uv`
+- `git`
+- `just`
+- `cmake`
+- `ninja`
+- `dtc`
+- `screen`
+- Zephyr SDK or another ESP32-C3-compatible RISC-V toolchain
+
+Install the local Zephyr workspace and Python tooling:
+
+```sh
+just install
+```
+
+`just install` resolves the latest stable non-release-candidate Zephyr tag from the official Zephyr repository, creates `.venv`, initializes a gitignored `.zephyr/` West workspace, runs `west update`, installs Zephyr Python requirements with `uv pip`, and checks that an ESP32-C3-capable RISC-V toolchain is available.
+
+Build the firmware:
+
+```sh
+just build
+```
+
+This runs:
+
+```sh
+cd .zephyr && ../.venv/bin/west -z zephyr build -b esp32c3_devkitm -d ../build ..
+```
+
+Flash the connected board:
+
+```sh
+just flash
+```
+
+The default flash device is:
+
+```text
+/dev/tty.usbmodem1101
+```
+
+Read firmware logs:
+
+```sh
+just log
+```
+
+This opens:
+
+```sh
+screen /dev/tty.usbmodem1101 115200
+```
+
+Run tests after `just install`:
+
+```sh
+cd .zephyr && ../.venv/bin/west -z zephyr twister -T ../tests --outdir ../twister-out
+```
+
+On macOS without a Zephyr SDK installed, host-only Twister discovery can be checked with:
+
+```sh
+cd .zephyr && ZEPHYR_TOOLCHAIN_VARIANT=host ../.venv/bin/west -z zephyr twister -T ../tests --platform native_sim --outdir ../twister-out
+```
+
+Zephyr's `native_sim` execution target is Linux-only, so this command may discover the tests but filter them on macOS.
+
 ## What it does
 
 CyberBrick ESC reads standard hobby RC PWM signals and drives the CyberBrick brushed motor outputs as a dual bidirectional ESC.
@@ -202,6 +277,23 @@ Required safety behavior:
 
 Bench testing should be done with the tank lifted, tracks removed, or motors disconnected.
 
+## Hardware validation
+
+Use `/dev/tty.usbmodem1101` for the currently connected device unless `DEVICE` is overridden:
+
+```sh
+DEVICE=/dev/tty.usbmodem1101 just flash
+DEVICE=/dev/tty.usbmodem1101 just log
+```
+
+Before flashing or sending input signals, make the motor outputs physically safe:
+
+- Disconnect motors, remove tracks, or lift the tank so the tracks cannot move the vehicle.
+- Use a current-limited supply during bring-up.
+- Confirm the flight-controller PWM signal is 3.3 V safe before connecting it to GPIO0 or GPIO1.
+- Start with both inputs at neutral and verify the firmware logs an armed state only after the neutral arming delay.
+- Verify input loss and invalid pulse widths stop both motors before testing nonzero commands.
+
 ## Software architecture
 
 Expected modules:
@@ -277,10 +369,11 @@ Avoid project-specific build scripts unless they wrap standard Zephyr commands a
 Example commands:
 
 ```sh
-west build -b esp32c3_devkitm .
-west flash
-west build -t menuconfig
-west twister -T tests
+just install
+just build
+just flash
+just log
+cd .zephyr && ../.venv/bin/west -z zephyr twister -T ../tests --outdir ../twister-out
 ```
 
 A custom board definition can be added later as `cyberbrick_esc_esp32c3`, but early development may use an existing ESP32-C3 Zephyr board target plus an application overlay.

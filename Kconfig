@@ -1,0 +1,103 @@
+menu "CyberBrick ESC"
+
+config CYBERBRICK_ESC
+	bool "CyberBrick ESC firmware"
+	default y
+	select GPIO
+	select PWM
+	help
+	  Zephyr-native bidirectional brushed ESC firmware for CyberBrick
+	  ESP32-C3 hardware.
+
+config CYBERBRICK_ESC_INPUT_TIMEOUT_MS
+	int "Input failsafe timeout in milliseconds"
+	default 150
+	range 20 1000
+
+config CYBERBRICK_ESC_ARMING_TIME_MS
+	int "Neutral arming time in milliseconds"
+	default 1000
+	range 0 5000
+
+config CYBERBRICK_ESC_MIN_VALID_US
+	int "Minimum valid input pulse width in microseconds"
+	default 900
+	range 500 1500
+
+config CYBERBRICK_ESC_MAX_VALID_US
+	int "Maximum valid input pulse width in microseconds"
+	default 2100
+	range 1500 2500
+
+config CYBERBRICK_ESC_MIN_COMMAND_US
+	int "Full reverse command pulse width in microseconds"
+	default 1000
+	range 500 1500
+
+config CYBERBRICK_ESC_NEUTRAL_US
+	int "Neutral command pulse width in microseconds"
+	default 1500
+	range 1000 2000
+
+config CYBERBRICK_ESC_MAX_COMMAND_US
+	int "Full forward command pulse width in microseconds"
+	default 2000
+	range 1500 2500
+
+config CYBERBRICK_ESC_DEADBAND_US
+	int "Neutral deadband on each side of neutral in microseconds"
+	default 50
+	range 0 200
+
+config CYBERBRICK_ESC_CONTROL_LOOP_HZ
+	int "Control loop rate in Hz"
+	default 200
+	range 10 1000
+
+config CYBERBRICK_ESC_OUTPUT_PWM_HZ
+	int "Motor output PWM frequency in Hz"
+	default 1000
+	range 100 40000
+
+choice CYBERBRICK_ESC_STOP_MODE
+	prompt "Stop mode"
+	default CYBERBRICK_ESC_STOP_MODE_COAST
+
+config CYBERBRICK_ESC_STOP_MODE_COAST
+	bool "Coast"
+
+config CYBERBRICK_ESC_STOP_MODE_BRAKE
+	bool "Brake"
+
+endchoice
+
+config CYBERBRICK_ESC_MOTOR1_INVERT
+	bool "Invert motor 1 physical polarity"
+	default n
+
+config CYBERBRICK_ESC_MOTOR2_INVERT
+	bool "Invert motor 2 physical polarity"
+	default n
+
+config CYBERBRICK_ESC_MOTOR1_MAX_FORWARD_PERMILLE
+	int "Motor 1 maximum forward output in permille"
+	default 1000
+	range 0 1000
+
+config CYBERBRICK_ESC_MOTOR1_MAX_REVERSE_PERMILLE
+	int "Motor 1 maximum reverse output in permille"
+	default 1000
+	range 0 1000
+
+config CYBERBRICK_ESC_MOTOR2_MAX_FORWARD_PERMILLE
+	int "Motor 2 maximum forward output in permille"
+	default 1000
+	range 0 1000
+
+config CYBERBRICK_ESC_MOTOR2_MAX_REVERSE_PERMILLE
+	int "Motor 2 maximum reverse output in permille"
+	default 1000
+	range 0 1000
+
+endmenu
+

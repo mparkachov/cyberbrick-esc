@@ -1,0 +1,11 @@
+.zephyr/
+.venv/
+build/
+twister-out*/
+
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.cache/
+*.pyc
+*.pyo

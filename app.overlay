@@ -1,0 +1,93 @@
+#include <zephyr/dt-bindings/gpio/gpio.h>
+#include <zephyr/dt-bindings/pinctrl/esp32c3-pinctrl.h>
+#include <zephyr/dt-bindings/pwm/pwm.h>
+
+/ {
+	aliases {
+		esc-input-1 = &esc_input1;
+		esc-input-2 = &esc_input2;
+		motor-1-a = &motor1_a;
+		motor-1-b = &motor1_b;
+		motor-2-a = &motor2_a;
+		motor-2-b = &motor2_b;
+	};
+
+	cyberbrick_esc_inputs {
+		compatible = "gpio-keys";
+
+		esc_input1: esc_input_1 {
+			gpios = <&gpio0 1 GPIO_ACTIVE_HIGH>;
+			label = "ESC input 1";
+		};
+
+		esc_input2: esc_input_2 {
+			gpios = <&gpio0 0 GPIO_ACTIVE_HIGH>;
+			label = "ESC input 2";
+		};
+	};
+
+	cyberbrick_esc_motors {
+		compatible = "pwm-leds";
+
+		motor1_a: motor_1_a {
+			pwms = <&ledc0 0 PWM_USEC(1000) PWM_POLARITY_NORMAL>;
+			label = "Motor 1 input A";
+		};
+
+		motor1_b: motor_1_b {
+			pwms = <&ledc0 1 PWM_USEC(1000) PWM_POLARITY_NORMAL>;
+			label = "Motor 1 input B";
+		};
+
+		motor2_a: motor_2_a {
+			pwms = <&ledc0 2 PWM_USEC(1000) PWM_POLARITY_NORMAL>;
+			label = "Motor 2 input A";
+		};
+
+		motor2_b: motor_2_b {
+			pwms = <&ledc0 3 PWM_USEC(1000) PWM_POLARITY_NORMAL>;
+			label = "Motor 2 input B";
+		};
+	};
+};
+
+&pinctrl {
+	ledc0_motors: ledc0_motors {
+		group1 {
+			pinmux = <LEDC_CH0_GPIO4>,
+				 <LEDC_CH1_GPIO5>,
+				 <LEDC_CH2_GPIO6>,
+				 <LEDC_CH3_GPIO7>;
+			output-enable;
+		};
+	};
+};
+
+&ledc0 {
+	status = "okay";
+	pinctrl-0 = <&ledc0_motors>;
+	pinctrl-names = "default";
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	channel0@0 {
+		reg = <0>;
+		timer = <0>;
+	};
+
+	channel1@1 {
+		reg = <1>;
+		timer = <0>;
+	};
+
+	channel2@2 {
+		reg = <2>;
+		timer = <0>;
+	};
+
+	channel3@3 {
+		reg = <3>;
+		timer = <0>;
+	};
+};
+
