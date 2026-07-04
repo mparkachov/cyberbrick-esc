@@ -1,4 +1,6 @@
 .zephyr/
+.esp-idf/
+.espressif/
 .venv/
 build/
 twister-out*/

@@ -29,19 +29,16 @@ Required host commands before setup:
 - `uv`
 - `git`
 - `just`
-- `cmake`
-- `ninja`
 - `dtc`
 - `screen`
-- Zephyr SDK or another ESP32-C3-compatible RISC-V toolchain
 
-Install the local Zephyr workspace and Python tooling:
+Install the local Zephyr workspace, ESP-IDF checkout, Espressif tools, and Python tooling:
 
 ```sh
 just install
 ```
 
-`just install` resolves the latest stable non-release-candidate Zephyr tag from the official Zephyr repository, creates `.venv`, initializes a gitignored `.zephyr/` West workspace, runs `west update`, installs Zephyr Python requirements with `uv pip`, and checks that an ESP32-C3-capable RISC-V toolchain is available.
+`just install` resolves the latest stable non-release-candidate Zephyr and ESP-IDF tags from the official upstream repositories, creates `.venv`, initializes gitignored `.zephyr/` and `.esp-idf/` workspaces, installs Espressif tools into `.espressif/`, installs local ESP-IDF CMake and Ninja binaries, installs Python requirements with `uv pip`, and verifies that the local ESP32-C3 RISC-V toolchain is available.
 
 Build the firmware:
 
@@ -52,8 +49,10 @@ just build
 This runs:
 
 ```sh
-cd .zephyr && ../.venv/bin/west -z zephyr build -b esp32c3_devkitm -d ../build ..
+cd .zephyr && IDF_PATH=../.esp-idf IDF_TOOLS_PATH=../.espressif ZEPHYR_TOOLCHAIN_VARIANT=cross-compile CROSS_COMPILE=<local-riscv32-esp-elf-prefix> ../.venv/bin/west -z zephyr build -p auto -b esp32c3_devkitm -d ../build ..
 ```
+
+The build recipe exports ESP-IDF's local tool paths first, so CMake, Ninja, OpenOCD, esptool, and the ESP32-C3 RISC-V compiler come from gitignored project folders after setup. Zephyr still needs the devicetree compiler executable `dtc` from the host environment.
 
 Flash the connected board:
 
@@ -85,7 +84,7 @@ Run tests after `just install`:
 cd .zephyr && ../.venv/bin/west -z zephyr twister -T ../tests --outdir ../twister-out
 ```
 
-On macOS without a Zephyr SDK installed, host-only Twister discovery can be checked with:
+On macOS, host-only Twister discovery can be checked with:
 
 ```sh
 cd .zephyr && ZEPHYR_TOOLCHAIN_VARIANT=host ../.venv/bin/west -z zephyr twister -T ../tests --platform native_sim --outdir ../twister-out
@@ -354,9 +353,10 @@ Use stock Zephyr tooling first.
 
 Expected tools:
 
-- Zephyr SDK.
-- `west` for workspace management, build, flash, and debug.
-- CMake and Ninja through Zephyr build integration.
+- Local `.zephyr/` West workspace installed by `just install`.
+- Local `.esp-idf/` checkout and `.espressif/` Espressif tools installed by `just install`.
+- `west` in the project `.venv` for workspace management, build, flash, and debug.
+- CMake and Ninja through Zephyr or locally installed Espressif tools.
 - Devicetree overlays for pin assignments.
 - Kconfig for firmware options.
 - Zephyr GPIO API for PWM input edge interrupts.

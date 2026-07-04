@@ -4,7 +4,7 @@ title: 'EPIC: Zephyr-native dual PWM ESC MVP'
 status: To Do
 assignee: []
 created_date: '2026-07-04 19:31'
-updated_date: '2026-07-04 19:52'
+updated_date: '2026-07-04 20:17'
 labels:
   - epic
   - firmware
@@ -32,5 +32,5 @@ Deliver the MVP firmware profile: two center-neutral RC PWM inputs drive two bid
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Initial MVP implementation added: just/uv Zephyr workflow, app skeleton, safety mapping, motor output, PWM input capture, integration loop, tests, and README updates. Validation currently blocks at missing ESP32-C3 Zephyr SDK/RISC-V toolchain; native_sim Twister discovery works but execution is filtered on macOS because Zephyr native_sim is Linux-only.
+MVP firmware structure, safety mapping, motor output, PWM input capture, integration loop, tests, documentation, and just workflow are implemented. just install resolves Zephyr v4.4.1 and ESP-IDF v6.0.2 into gitignored local folders; ESP-IDF tools, CMake, Ninja, OpenOCD, esptool, and the ESP32-C3 RISC-V toolchain are local under .espressif/.venv. just build produces ESP32-C3 firmware artifacts under build/. Remaining open validation: Zephyr native_sim Twister execution is filtered on macOS because native_sim requires Linux, and hardware flash/log/physical motor validation has not been run.
 <!-- SECTION:NOTES:END -->

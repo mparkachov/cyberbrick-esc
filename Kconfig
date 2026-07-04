@@ -101,3 +101,4 @@ config CYBERBRICK_ESC_MOTOR2_MAX_REVERSE_PERMILLE
 
 endmenu
 
+source "Kconfig.zephyr"

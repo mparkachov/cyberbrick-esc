@@ -4,6 +4,7 @@ title: Tests And Twister
 status: To Do
 assignee: []
 created_date: '2026-07-04 19:32'
+updated_date: '2026-07-04 20:17'
 labels:
   - test
   - zephyr
@@ -31,3 +32,9 @@ Add Ztest/Twister coverage for hardware-independent mapping, safety state, and m
 - [ ] #3 west twister -T tests covers brake/coast, forward/reverse output generation, inversion, and scaling.
 - [ ] #4 Tests run without physical hardware.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Tests are defined under tests/safety for mapping, clamping, invalid rejection, neutral arming, failsafe transition/recovery, coast/brake, forward/reverse, inversion, and scaling. On this macOS host, Zephyr Twister discovered the native_sim suite but filtered it because native_sim requires Linux.
+<!-- SECTION:NOTES:END -->
