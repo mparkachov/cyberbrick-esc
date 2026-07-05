@@ -24,15 +24,22 @@ class StatusLed:
         self._apply_state(direction, brightness)
 
     def _apply_state(self, direction, brightness):
-        if direction == DIRECTION_FORWARD:
-            color = (0, brightness, 0)
-        elif direction == DIRECTION_REVERSE:
-            color = (brightness, 0, 0)
-        else:
-            color = (0, 0, brightness)
-
+        color = rgb_from_state(direction, brightness)
         for bus in self._buses:
             bus.show(color)
+
+
+def rgb_from_commands(commands):
+    direction, brightness = state_from_commands(commands)
+    return rgb_from_state(direction, brightness)
+
+
+def rgb_from_state(direction, brightness):
+    if direction == DIRECTION_FORWARD:
+        return (0, brightness, 0)
+    if direction == DIRECTION_REVERSE:
+        return (brightness, 0, 0)
+    return (0, 0, brightness)
 
 
 def state_from_commands(commands):
