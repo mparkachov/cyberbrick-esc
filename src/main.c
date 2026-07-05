@@ -45,6 +45,7 @@ int main(void)
 
 	ret = cyberbrick_esc_motor_output_init();
 	if (ret != 0) {
+		(void)cyberbrick_esc_motor_output_stop();
 		LOG_ERR("Motor output init failed: %d", ret);
 		return ret;
 	}
@@ -81,4 +82,3 @@ int main(void)
 
 	return 0;
 }
-
