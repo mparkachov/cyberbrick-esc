@@ -7,11 +7,13 @@ DIRECTION_REVERSE = -1
 
 
 class StatusLed:
-    def __init__(self, pin_id=config.LED_PIN, count=config.LED_COUNT):
-        from machine import Pin
-        from neopixel import NeoPixel
+    def __init__(self):
+        from cyberbrick_esc.pixels import PixelBus
 
-        self._pixel = NeoPixel(Pin(pin_id, Pin.OUT), count)
+        self._buses = tuple(
+            PixelBus(pin_id, count)
+            for pin_id, count in zip(config.LED_DATA_PINS, config.LED_PIXEL_COUNTS)
+        )
         self.show_neutral()
 
     def show_neutral(self):
@@ -29,8 +31,8 @@ class StatusLed:
         else:
             color = (0, 0, brightness)
 
-        self._pixel[0] = color
-        self._pixel.write()
+        for bus in self._buses:
+            bus.show(color)
 
 
 def state_from_commands(commands):

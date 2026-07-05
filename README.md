@@ -53,7 +53,7 @@ Known target hardware:
 
 - MCU: ESP32-C3 on CyberBrick Multi-Function Core Board.
 - Runtime: stock CyberBrick MicroPython firmware with REPL access.
-- LED: one onboard WS2812/NeoPixel RGB LED, currently treated as GPIO8.
+- LED: stock LED channels using WS2812/NeoPixel strings on GPIO21 and GPIO20.
 - Inputs: standard hobby PWM signal pins from a flight controller or signal
   generator.
 
@@ -63,7 +63,8 @@ Default pins:
 | --- | --- | ---: |
 | ESC input 1 | Servo S3 signal | GPIO1 |
 | ESC input 2 | Servo S4 signal | GPIO0 |
-| Onboard RGB LED | Board LED | GPIO8 |
+| Onboard RGB LED channel 1 | Board LED | GPIO21 |
+| Onboard RGB LED channel 2 | Board LED | GPIO20 |
 
 Reserved pins:
 
@@ -128,10 +129,35 @@ Deploy the persistent onboard LED blink:
 just deploy-blink
 ```
 
-This backs up the board filesystem, copies
+This backs up the board filesystem, preserves the stock `boot.py` as remote
+`boot.stock.py` if it is not already saved, copies
+`micropython/examples/blink_boot.py` to remote `boot.py`, copies
 `micropython/examples/blink_main.py` to remote `main.py`, and resets the board.
-After deployment, the LED should blink after board reset or power-on without any
+The boot override is required because the observed stock CyberBrick `boot.py`
+runs `./app/rc_main.py` directly and does not hand control to `main.py`. After
+deployment, the LEDs should blink after board reset or power-on without any
 additional host command.
+
+Run the blink from RAM without changing the filesystem:
+
+```sh
+just run-blink
+```
+
+If the board still shows the stock solid green state after `deploy-blink`, use:
+
+```sh
+just mp-tree
+just mp-cat-boot
+just mp-cat-boot-marker
+just run-led-probe
+just run-blink
+```
+
+`mp-tree` confirms which files are on the board, `mp-cat-boot` confirms whether
+the boot override was installed, `mp-cat-boot-marker` confirms whether the boot
+override actually ran, and `run-led-probe` prints each candidate LED data pin as
+it is tested.
 
 Deploy the ESC simulator:
 
@@ -139,14 +165,19 @@ Deploy the ESC simulator:
 just deploy
 ```
 
-This backs up the board filesystem, copies `micropython/main.py` and
-`micropython/lib/cyberbrick_esc/` to the board, and resets it.
+This backs up the board filesystem, preserves the stock `boot.py` as remote
+`boot.stock.py` if needed, copies `micropython/boot.py`,
+`micropython/main.py`, and `micropython/lib/cyberbrick_esc/` to the board, and
+resets it.
 
-Stop the deployed app and recover REPL startup:
+Stop the deployed app and recover stock startup:
 
 ```sh
 just mp-stop
 ```
+
+This restores remote `boot.stock.py` back to `boot.py` when present, removes the
+PoC `main.py`, and resets the board.
 
 Restore the latest local backup:
 
@@ -195,8 +226,10 @@ or control motor outputs.
 justfile
 requirements.txt
 micropython/
+  boot.py
   main.py
   examples/
+    blink_boot.py
     blink_main.py
   lib/
     cyberbrick_esc/

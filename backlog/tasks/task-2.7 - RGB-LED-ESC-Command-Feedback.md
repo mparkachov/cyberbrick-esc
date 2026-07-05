@@ -39,5 +39,5 @@ Show final safe ESC simulator commands on the onboard RGB LED.
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Use one NeoPixel on GPIO8. The LED is proof-of-concept feedback only; it is not a motor output or safety mechanism.
+Use the direct WS2812 candidate-pin driver until the visible LED data pin is confirmed. The LED is proof-of-concept feedback only; it is not a motor output or safety mechanism.
 <!-- SECTION:NOTES:END -->

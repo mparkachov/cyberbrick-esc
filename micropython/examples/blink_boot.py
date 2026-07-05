@@ -1,3 +1,7 @@
+# This file intentionally replaces stock boot.py only after `just mp-backup`.
+# `just mp-stop` restores the original boot.py from remote boot.stock.py.
+
+import gc
 from machine import Pin, bitstream
 from time import sleep_ms
 
@@ -30,10 +34,18 @@ def show_all(buses, rgb):
         bus.show(rgb)
 
 
-buses = tuple(PixelBus(pin_id, count) for pin_id, count in LED_CANDIDATES)
-colors = ((64, 0, 0), (0, 64, 0), (0, 0, 64), (0, 0, 0))
+def main():
+    with open("poc_boot_seen.txt", "w") as marker:
+        marker.write("blink_boot.py started\n")
 
-while True:
-    for color in colors:
-        show_all(buses, color)
-        sleep_ms(STEP_MS)
+    buses = tuple(PixelBus(pin_id, count) for pin_id, count in LED_CANDIDATES)
+    colors = ((64, 0, 0), (0, 64, 0), (0, 0, 64), (0, 0, 0))
+
+    while True:
+        for color in colors:
+            show_all(buses, color)
+            gc.collect()
+            sleep_ms(STEP_MS)
+
+
+main()

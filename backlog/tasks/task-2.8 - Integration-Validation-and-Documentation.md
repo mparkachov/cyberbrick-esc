@@ -33,7 +33,7 @@ Make the MicroPython simulator milestone usable, recoverable, and documented.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 `just deploy` installs `main.py` and `cyberbrick_esc` library files.
+- [ ] #1 `just deploy` installs the reversible PoC `boot.py`, `main.py`, and `cyberbrick_esc` library files.
 - [ ] #2 README documents wiring, 3.3 V signal limits, blink, deploy, backup, restore, failsafe behavior, and intentionally unsupported features.
 - [ ] #3 `just test` passes host safety tests.
 - [ ] #4 Documentation states that GPIO4-GPIO7 motor outputs are not driven in this milestone.

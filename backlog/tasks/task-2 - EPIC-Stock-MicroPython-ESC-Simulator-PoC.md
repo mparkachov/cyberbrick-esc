@@ -4,7 +4,7 @@ title: 'EPIC: Stock MicroPython ESC Simulator PoC'
 status: To Do
 assignee: []
 created_date: '2026-07-05 09:06'
-updated_date: '2026-07-05 09:06'
+updated_date: '2026-07-05 12:05'
 labels:
   - epic
   - micropython
@@ -28,7 +28,7 @@ Prove the stock CyberBrick MicroPython runtime can host the ESC simulator path w
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Persistent onboard LED blink deploys as `main.py` and runs after board reset or power-on without a host command.
+- [x] #1 Persistent onboard LED blink deploys through a reversible `boot.py` override and runs after board reset or power-on without a host command.
 - [ ] #2 Simulator reads both input channels on GPIO1 and GPIO0 and rejects invalid pulse widths.
 - [ ] #3 Safety mapping matches 1000 us -> -1000, 1500 us -> 0, 2000 us -> +1000, with neutral-before-arm and failsafe recovery.
 - [ ] #4 RGB LED reflects final safe commands: blue neutral, green forward, red reverse, and blue on exact opposing ties.

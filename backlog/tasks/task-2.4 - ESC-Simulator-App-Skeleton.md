@@ -11,6 +11,7 @@ labels:
 dependencies:
   - TASK-2.1
 modified_files:
+  - micropython/boot.py
   - micropython/main.py
   - micropython/lib/cyberbrick_esc/config.py
   - micropython/lib/cyberbrick_esc/app.py
@@ -28,7 +29,7 @@ Create the MicroPython app entrypoint, package layout, and safe default configur
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Config defines GPIO1/GPIO0 inputs and GPIO8 LED.
+- [ ] #1 Config defines GPIO1/GPIO0 inputs and stock LED channels on GPIO21/GPIO20.
 - [ ] #2 Config defines 900-2100 us valid range, 1000/1500/2000 us command mapping, 50 us deadband, 150 ms failsafe, 1000 ms neutral arming, and 200 Hz loop.
 - [ ] #3 App entrypoint initializes LED, input capture, and safety mapping.
 - [ ] #4 No motor output pins are configured or written.
@@ -37,5 +38,5 @@ Create the MicroPython app entrypoint, package layout, and safe default configur
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Keep long-running behavior in `main.py`; do not add `boot.py` unless a later task proves it is required.
+The observed stock `boot.py` runs the vendor app directly, so this milestone uses a reversible `boot.py` override that executes the PoC `main.py`.
 <!-- SECTION:NOTES:END -->

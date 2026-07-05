@@ -90,8 +90,9 @@ Preferred tools and mechanisms:
   the app is interrupted.
 - `just` as the thin project command runner.
 - `python3 -m unittest` for host checks of pure logic.
-- Persistent app deployment by copying `main.py` and library files to the
-  MicroPython filesystem.
+- Persistent app deployment by preserving stock `boot.py`, then copying a
+  reversible PoC `boot.py`, `main.py`, and library files to the MicroPython
+  filesystem.
 
 Avoid:
 
@@ -123,7 +124,9 @@ Default status LED:
 
 | Function | GPIO |
 | --- | ---: |
-| Onboard RGB LED WS2812/NeoPixel | GPIO8 |
+| Onboard RGB LED candidate | GPIO8 |
+| Stock LED/buzzer channel 1 candidate | GPIO21 |
+| Stock LED/buzzer channel 2 candidate | GPIO20 |
 
 Reserved motor pins:
 
@@ -139,8 +142,8 @@ Avoid using these pins in normal MicroPython development:
 - GPIO2, because it is an ESP32-C3 strapping pin.
 - GPIO4 to GPIO7, because they are reserved for later motor output work.
 - GPIO18 and GPIO19, because they are USB pins.
-- GPIO20 and GPIO21 for ESC input, because they may be tied to debug, UART,
-  LED, or buzzer functions on CyberBrick-related hardware.
+- GPIO20 and GPIO21 for ESC input, because the observed stock MicroPython board
+  uses them for onboard LED channels.
 
 Keep hardware pin assignments centralized in `micropython/lib/cyberbrick_esc/config.py`.
 
@@ -219,6 +222,7 @@ requirements.txt
 micropython/
   main.py
   examples/
+    blink_boot.py
     blink_main.py
   lib/
     cyberbrick_esc/

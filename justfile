@@ -20,6 +20,30 @@ _ensure-tools:
 mp-list: _ensure-tools
     "{{mpremote}}" connect list
 
+mp-tree: _ensure-tools
+    #!/usr/bin/env bash
+    set -euo pipefail
+    port="$("$PWD/.venv/bin/python" "{{prepare_repl}}" "{{device}}")"
+    "{{mpremote}}" connect "$port" resume fs tree :
+
+mp-cat-boot: _ensure-tools
+    #!/usr/bin/env bash
+    set -euo pipefail
+    port="$("$PWD/.venv/bin/python" "{{prepare_repl}}" "{{device}}")"
+    "{{mpremote}}" connect "$port" resume fs cat :boot.py
+
+mp-cat-main: _ensure-tools
+    #!/usr/bin/env bash
+    set -euo pipefail
+    port="$("$PWD/.venv/bin/python" "{{prepare_repl}}" "{{device}}")"
+    "{{mpremote}}" connect "$port" resume fs cat :main.py
+
+mp-cat-boot-marker: _ensure-tools
+    #!/usr/bin/env bash
+    set -euo pipefail
+    port="$("$PWD/.venv/bin/python" "{{prepare_repl}}" "{{device}}")"
+    "{{mpremote}}" connect "$port" resume fs cat :poc_boot_seen.txt
+
 mp-repl: _ensure-tools
     #!/usr/bin/env bash
     set -euo pipefail
@@ -41,22 +65,65 @@ mp-backup: _ensure-tools
 deploy-blink: _ensure-tools
     #!/usr/bin/env bash
     set -euo pipefail
+    root="$PWD"
     just mp-backup
+    port="$("$root/.venv/bin/python" "$root/{{prepare_repl}}" "{{device}}")"
+    mkdir -p "$root/.cache"
+    tmp="$(mktemp -d "$root/.cache/mpremote.XXXXXX")"
+    trap 'rm -rf "$tmp"' EXIT
+    if "{{mpremote}}" connect "$port" resume fs cp -f :boot.stock.py "$tmp/boot.stock.py" >/dev/null 2>&1; then
+        printf 'Remote boot.stock.py already exists; leaving it unchanged.\n'
+    else
+        "{{mpremote}}" connect "$port" resume fs cp -f :boot.py "$tmp/boot.py"
+        "{{mpremote}}" connect "$port" resume fs cp -f "$tmp/boot.py" :boot.stock.py
+    fi
+    "{{mpremote}}" connect "$port" resume fs cp -f micropython/examples/blink_boot.py :boot.py + fs cp -f micropython/examples/blink_main.py :main.py + reset
+
+run-blink: _ensure-tools
+    #!/usr/bin/env bash
+    set -euo pipefail
     port="$("$PWD/.venv/bin/python" "{{prepare_repl}}" "{{device}}")"
-    "{{mpremote}}" connect "$port" resume fs cp -f micropython/examples/blink_main.py :main.py + reset
+    "{{mpremote}}" connect "$port" resume run micropython/examples/blink_main.py
+
+run-led-probe: _ensure-tools
+    #!/usr/bin/env bash
+    set -euo pipefail
+    port="$("$PWD/.venv/bin/python" "{{prepare_repl}}" "{{device}}")"
+    "{{mpremote}}" connect "$port" resume run micropython/examples/led_probe.py
 
 deploy: _ensure-tools
     #!/usr/bin/env bash
     set -euo pipefail
+    root="$PWD"
     just mp-backup
-    port="$("$PWD/.venv/bin/python" "{{prepare_repl}}" "{{device}}")"
-    "{{mpremote}}" connect "$port" resume exec "import os\nfor d in ('lib', 'lib/cyberbrick_esc'):\n    try:\n        os.mkdir(d)\n    except OSError:\n        pass" fs cp -f micropython/main.py :main.py + fs cp -f micropython/lib/cyberbrick_esc/*.py :lib/cyberbrick_esc/ + reset
+    port="$("$root/.venv/bin/python" "$root/{{prepare_repl}}" "{{device}}")"
+    mkdir -p "$root/.cache"
+    tmp="$(mktemp -d "$root/.cache/mpremote.XXXXXX")"
+    trap 'rm -rf "$tmp"' EXIT
+    if "{{mpremote}}" connect "$port" resume fs cp -f :boot.stock.py "$tmp/boot.stock.py" >/dev/null 2>&1; then
+        printf 'Remote boot.stock.py already exists; leaving it unchanged.\n'
+    else
+        "{{mpremote}}" connect "$port" resume fs cp -f :boot.py "$tmp/boot.py"
+        "{{mpremote}}" connect "$port" resume fs cp -f "$tmp/boot.py" :boot.stock.py
+    fi
+    "{{mpremote}}" connect "$port" resume fs mkdir :lib >/dev/null 2>&1 || true
+    "{{mpremote}}" connect "$port" resume fs mkdir :lib/cyberbrick_esc >/dev/null 2>&1 || true
+    "{{mpremote}}" connect "$port" resume fs cp -f micropython/boot.py :boot.py + fs cp -f micropython/main.py :main.py + fs cp -f micropython/lib/cyberbrick_esc/*.py :lib/cyberbrick_esc/ + reset
 
 mp-stop: _ensure-tools
     #!/usr/bin/env bash
     set -euo pipefail
-    port="$("$PWD/.venv/bin/python" "{{prepare_repl}}" "{{device}}")"
-    "{{mpremote}}" connect "$port" resume exec "import os\ntry:\n    os.remove('main.py')\nexcept OSError:\n    pass" reset
+    root="$PWD"
+    port="$("$root/.venv/bin/python" "$root/{{prepare_repl}}" "{{device}}")"
+    mkdir -p "$root/.cache"
+    tmp="$(mktemp -d "$root/.cache/mpremote.XXXXXX")"
+    trap 'rm -rf "$tmp"' EXIT
+    if "{{mpremote}}" connect "$port" resume fs cp -f :boot.stock.py "$tmp/boot.py" >/dev/null 2>&1; then
+        "{{mpremote}}" connect "$port" resume fs cp -f "$tmp/boot.py" :boot.py
+        "{{mpremote}}" connect "$port" resume fs rm :boot.stock.py >/dev/null 2>&1 || true
+    fi
+    "{{mpremote}}" connect "$port" resume fs rm :main.py >/dev/null 2>&1 || true
+    "{{mpremote}}" connect "$port" resume reset
 
 mp-restore: _ensure-tools
     #!/usr/bin/env bash
@@ -67,7 +134,11 @@ mp-restore: _ensure-tools
     test -n "$latest" || { echo "No backup found under {{backup_root}}."; exit 1; }
     files="$latest/files"
     test -d "$files" || { echo "Backup has no files directory: $latest"; exit 1; }
-    "{{mpremote}}" connect "$port" resume exec "import os\nfor p in ('main.py', 'lib/cyberbrick_esc/app.py', 'lib/cyberbrick_esc/config.py', 'lib/cyberbrick_esc/led.py', 'lib/cyberbrick_esc/pwm_input.py', 'lib/cyberbrick_esc/safety.py', 'lib/cyberbrick_esc/__init__.py'):\n    try:\n        os.remove(p)\n    except OSError:\n        pass\nfor d in ('lib/cyberbrick_esc', 'lib'):\n    try:\n        os.rmdir(d)\n    except OSError:\n        pass"
+    for remote_path in :main.py :boot.stock.py :lib/cyberbrick_esc/app.py :lib/cyberbrick_esc/config.py :lib/cyberbrick_esc/led.py :lib/cyberbrick_esc/pwm_input.py :lib/cyberbrick_esc/safety.py :lib/cyberbrick_esc/__init__.py; do
+        "{{mpremote}}" connect "$port" resume fs rm "$remote_path" >/dev/null 2>&1 || true
+    done
+    "{{mpremote}}" connect "$port" resume fs rmdir :lib/cyberbrick_esc >/dev/null 2>&1 || true
+    "{{mpremote}}" connect "$port" resume fs rmdir :lib >/dev/null 2>&1 || true
     shopt -s nullglob dotglob
     items=("$files"/*)
     if [ "${#items[@]}" -gt 0 ]; then
@@ -83,4 +154,4 @@ test:
     root="$PWD"
     python="${PYTHON:-python3}"
     PYTHONPATH="$root/micropython/lib" "$python" -m unittest discover -s tests
-    "$python" -m py_compile scripts/*.py micropython/main.py micropython/examples/blink_main.py micropython/lib/cyberbrick_esc/*.py tests/*.py
+    "$python" -m py_compile scripts/*.py micropython/boot.py micropython/main.py micropython/examples/*.py micropython/lib/cyberbrick_esc/*.py tests/*.py
