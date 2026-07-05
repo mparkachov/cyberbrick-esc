@@ -41,7 +41,7 @@ flash:
     export PATH="$root/.venv/bin:$PATH"
     eval "$("$root/.venv/bin/python" "$IDF_PATH/tools/idf_tools.py" export)"
     cd "$root/.zephyr"
-    "$root/{{west}}" -z zephyr flash -d "$root/build" --runner esp32 --skip-rebuild --esp-device "{{device}}" --esp-idf-path "$IDF_PATH"
+    "$root/{{west}}" -z zephyr flash -d "$root/build" --runner esp32 --no-rebuild --esp-device "{{device}}" --esp-idf-path "$IDF_PATH"
 
 log:
     screen "{{device}}" 115200

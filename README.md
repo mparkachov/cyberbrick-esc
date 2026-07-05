@@ -8,9 +8,38 @@ This project is a proof of concept. It is not intended for production deployment
 
 This is not CyberBrick stock firmware. It is not a rover controller, not a Bluetooth controller, not a UART motor adapter, and not a DShot or BLHeli ESC implementation.
 
+## Proof-of-concept result
+
+The ESC functionality is technically feasible: the Zephyr firmware architecture,
+safe command mapping, input capture, motor output path, RGB feedback, local
+toolchain setup, and macOS `just build` workflow are implemented.
+
+The PoC does not currently run on the observed stock CyberBrick board. The
+connected board at `/dev/tty.usbmodem1101` remains functional with its stock
+MicroPython runtime and can enter the MicroPython REPL after Ctrl-C, so it is
+not bricked. However, ESP32-C3 ROM flashing reports Secure Download Mode with
+flash encryption enabled, and esptool refuses to write the plaintext Zephyr
+binary because doing so can make the device unusable.
+
+For this repository, the stock locked CyberBrick board is treated as not
+Zephyr-flashable unless a maintainer provides an approved vendor-compatible
+signed/encrypted flashing flow. Practical follow-up options are:
+
+- Continue Zephyr validation on an unlocked ESP32-C3 development board or an
+  unlocked replacement CyberBrick board.
+- Ask the vendor for an official signed/encrypted firmware or recovery flow.
+- Explore a separate stock-firmware MicroPython PoC that uploads Python files
+  through the existing REPL instead of replacing firmware.
+
+Relevant references:
+
+- [ESP-IDF flash encryption](https://docs.espressif.com/projects/esp-idf/en/latest/esp32c3/security/flash-encryption.html)
+- [esptool flash protection](https://docs.espressif.com/projects/esptool/en/latest/esp32c3/esptool/basic-commands.html#flash-protection)
+
 ## Current target
 
-CyberBrick ESC targets this hardware combination:
+CyberBrick ESC targets this hardware combination when the ESP32-C3 firmware can
+be replaced:
 
 - CyberBrick Multi-Function Core Board based on ESP32-C3.
 - CyberBrick receiver and motor-driver board used in the Mini Tank.
@@ -70,11 +99,23 @@ Flash the connected board:
 just flash
 ```
 
+`just flash` is intended for an unlocked ESP32-C3 target. It is not expected to
+work on stock CyberBrick boards that enforce Secure Download Mode with flash
+encryption enabled.
+
 The default flash device is:
 
 ```text
 /dev/tty.usbmodem1101
 ```
+
+If flashing reports that the ESP32-C3 is in Secure Download Mode with flash
+encryption enabled, stop. Do not pass esptool's force option to flash this
+proof-of-concept firmware. That state means the device is security-locked for
+encrypted or otherwise authorized images, and writing a plaintext Zephyr binary
+can make the board unusable. Use a development board or replacement CyberBrick
+board without flash encryption enabled, or document the board as not flashable
+for this PoC.
 
 Read firmware logs:
 
@@ -299,10 +340,21 @@ Before flashing or sending input signals, make the motor outputs physically safe
 
 - Disconnect motors, remove tracks, or lift the tank so the tracks cannot move the vehicle.
 - Use a current-limited supply during bring-up.
+- Do not force-flash a board that reports Secure Download Mode with flash encryption enabled.
 - Confirm the flight-controller PWM signal is 3.3 V safe before connecting it to GPIO0 or GPIO1.
 - Start with both inputs at neutral and verify the firmware logs an armed state only after the neutral arming delay.
 - Use the RGB LED as a visual preview of motor direction and relative speed before connecting motors.
 - Verify input loss and invalid pulse widths stop both motors before testing nonzero commands.
+
+Observed stock-board result:
+
+- `just flash` reached esptool but did not write firmware.
+- The board identified as ESP32-C3 in Secure Download Mode with flash
+  encryption enabled.
+- esptool refused the plaintext Zephyr binary to avoid bricking the device.
+- The board still runs stock firmware and exposes MicroPython REPL after Ctrl-C.
+- Hardware bring-up for this milestone is closed as blocked on stock hardware,
+  not as a successful Zephyr deployment to the retail CyberBrick board.
 
 ## Software architecture
 
@@ -434,6 +486,9 @@ CONFIG_CYBERBRICK_ESC_MIXING_MODE_THROTTLE_STEERING
 - Disable conflicting console or logging pins.
 - Confirm safe GPIO startup state.
 - Confirm flashing and recovery workflow.
+- Outcome: macOS build validation succeeded, but stock CyberBrick Zephyr flashing
+  is blocked by Secure Download Mode and flash encryption. Use unlocked hardware
+  or a vendor-compatible update path for further Zephyr bring-up.
 
 ### Milestone 1: Motor output only
 
@@ -484,4 +539,4 @@ Pick an open source license before accepting contributions. Recommended options:
 
 CyberBrick ESC is an independent open source firmware project. It is not affiliated with, endorsed by, or supported by Bambu Lab or the CyberBrick product team.
 
-Flashing third-party firmware can make the board unusable without recovery tools. Motors can start unexpectedly during firmware development. Test with the vehicle restrained and use a current-limited power source during bring-up.
+Flashing third-party firmware can make the board unusable without recovery tools. A board with ESP32-C3 Secure Download Mode and flash encryption enabled must not be force-flashed with a plaintext PoC image. Motors can start unexpectedly during firmware development. Test with the vehicle restrained and use a current-limited power source during bring-up.

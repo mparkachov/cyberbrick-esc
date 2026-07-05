@@ -8,6 +8,20 @@ CyberBrick ESC is a proof of concept. It is not intended for production
 deployment, and agents must not describe it as production-ready,
 safety-certified, or suitable for unattended use.
 
+Current proof-of-concept result:
+
+- The Zephyr ESC architecture is technically feasible and builds on macOS.
+- The observed stock CyberBrick ESP32-C3 board remains functional with its stock
+  MicroPython runtime and REPL, so it is not bricked.
+- The observed stock board is not usable for plaintext Zephyr flashing because
+  it reports Secure Download Mode with flash encryption enabled.
+- Do not force-flash plaintext firmware to such a board. Treat it as not
+  Zephyr-flashable unless a maintainer provides an approved signed/encrypted or
+  vendor-compatible update flow.
+- If stock-board experimentation is required, a separate MicroPython PoC can be
+  explored through the existing REPL, but it must not be presented as the
+  Zephyr firmware path in this repository.
+
 ## Mission
 
 CyberBrick ESC turns CyberBrick Mini Tank hardware into a standard bidirectional dual brushed ESC controlled by normal hobby PWM input signals from a flight controller.
@@ -95,6 +109,8 @@ Avoid:
 - Custom Makefiles that bypass Zephyr.
 - Vendor-specific firmware assumptions from CyberBrick stock code.
 - External dependencies unless they are clearly justified and approved.
+- Force-flashing plaintext firmware to ESP32-C3 boards that report Secure
+  Download Mode with flash encryption enabled.
 
 ESP-IDF headers or HAL behavior may be referenced only when Zephyr's ESP32-C3 port requires it internally. Application code should prefer Zephyr APIs.
 
