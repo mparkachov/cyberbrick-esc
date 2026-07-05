@@ -34,5 +34,5 @@ Implement hardware-independent pulse mapping, command clamping, neutral deadband
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Safety mapping core is implemented in src/safety.c and covered by tests/safety. Mapping verifies 1000 us -> -1000, 1500 us -> 0, and 2000 us -> +1000. Deadband, clamping, invalid pulse rejection, neutral-before-arm startup, failsafe transition, and neutral-only recovery are covered. The input sampler only updates valid timestamps for pulse widths inside the configured valid range. Local verification: standalone safety test compiled with cc -std=c11 -Wall -Wextra -Werror and passed; just build succeeded. Twister output is kept under build/twister-out; on this macOS host native_sim is filtered because Zephyr reports it requires Linux.
+Safety mapping core is implemented in src/safety.c. Mapping handles 1000 us -> -1000, 1500 us -> 0, and 2000 us -> +1000. Deadband, clamping, invalid pulse rejection, neutral-before-arm startup, failsafe transition, and neutral-only recovery are implemented. The input sampler only updates valid timestamps for pulse widths inside the configured valid range. Current project direction is proof-of-concept with macOS firmware build validation; Twister tests are not part of the active workflow.
 <!-- SECTION:FINAL_SUMMARY:END -->

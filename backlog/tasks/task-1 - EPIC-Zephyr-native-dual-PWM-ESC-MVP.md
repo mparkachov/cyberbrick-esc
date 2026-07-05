@@ -25,12 +25,12 @@ Deliver the MVP firmware profile: two center-neutral RC PWM inputs drive two bid
 <!-- AC:BEGIN -->
 - [ ] #1 Two standard PWM inputs map to two bidirectional brushed motor outputs in direct dual ESC mode.
 - [ ] #2 Boot, initialization failure, missing input, invalid pulse widths, and failsafe recovery all leave motor outputs safe unless neutral arming requirements are met.
-- [ ] #3 Project uses Zephyr-native build, Kconfig, devicetree, GPIO, PWM, Ztest, and Twister workflows.
+- [ ] #3 Project uses Zephyr-native build, Kconfig, devicetree, GPIO, PWM, and a macOS-buildable `just build` workflow.
 - [ ] #4 README and Backlog records describe the implemented workflow and intentionally unsupported features.
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-MVP firmware structure, safety mapping, motor output, PWM input capture, integration loop, tests, documentation, and just workflow are implemented. just install resolves Zephyr v4.4.1 and ESP-IDF v6.0.2 into gitignored local folders; ESP-IDF tools, CMake, Ninja, OpenOCD, esptool, and the ESP32-C3 RISC-V toolchain are local under .espressif/.venv. just build produces ESP32-C3 firmware artifacts under build/. Remaining open validation: Zephyr native_sim Twister execution is filtered on macOS because native_sim requires Linux, and hardware flash/log/physical motor validation has not been run.
+MVP firmware structure, safety mapping, motor output, PWM input capture, integration loop, documentation, and just workflow are implemented. just install resolves Zephyr v4.4.1 and ESP-IDF v6.0.2 into gitignored local folders; ESP-IDF tools, CMake, Ninja, OpenOCD, esptool, and the ESP32-C3 RISC-V toolchain are local under .espressif/.venv. just build produces ESP32-C3 firmware artifacts under build/. Project direction is proof-of-concept, not production deployment; Twister tests are not part of the active workflow. Remaining open validation: hardware flash/log/physical motor validation has not been run.
 <!-- SECTION:NOTES:END -->

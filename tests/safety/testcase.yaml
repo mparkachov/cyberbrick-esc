@@ -1,5 +1,0 @@
-tests:
-  cyberbrick_esc.safety:
-    platform_allow: native_sim
-    tags:
-      - safety

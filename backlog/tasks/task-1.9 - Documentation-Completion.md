@@ -28,5 +28,5 @@ Update README for the actual MVP workflow, implemented behavior, validation comm
 - [ ] #1 README documents required wiring, 3.3 V signal limits, GPIO pin map, center-neutral behavior, and failsafe behavior.
 - [ ] #2 README documents hardware validation precautions for /dev/tty.usbmodem1101.
 - [ ] #3 README clearly lists intentionally unsupported protocols and rover/autonomy features.
-- [ ] #4 README documents just install, just build, just clean, just flash, just log, and Twister test commands.
+- [ ] #4 README documents just install, just build, just clean, just flash, just log, and the PoC macOS build-validation workflow.
 <!-- AC:END -->

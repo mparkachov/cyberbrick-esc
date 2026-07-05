@@ -4,6 +4,8 @@ CyberBrick ESC is an open source Zephyr firmware project that repurposes CyberBr
 
 The project goal is narrow: make the CyberBrick ESP32-C3 board and its onboard dual brushed motor driver behave like two standard center-neutral RC ESC channels for a flight controller or RC-style PWM source.
 
+This project is a proof of concept. It is not intended for production deployment, unattended operation, or safety-certified use.
+
 This is not CyberBrick stock firmware. It is not a rover controller, not a Bluetooth controller, not a UART motor adapter, and not a DShot or BLHeli ESC implementation.
 
 ## Current target
@@ -86,19 +88,7 @@ This opens:
 screen /dev/tty.usbmodem1101 115200
 ```
 
-Run tests after `just install`:
-
-```sh
-cd .zephyr && ../.venv/bin/west -z zephyr twister -T ../tests --outdir ../build/twister-out
-```
-
-On macOS, host-only Twister discovery can be checked with:
-
-```sh
-cd .zephyr && ZEPHYR_TOOLCHAIN_VARIANT=host ../.venv/bin/west -z zephyr twister -T ../tests --platform native_sim --outdir ../build/twister-out
-```
-
-Zephyr's `native_sim` execution target is Linux-only, so this command may discover the tests but filter them on macOS.
+At this proof-of-concept stage, the required software validation is that the firmware builds on macOS with `just build`. Twister tests are not part of the active workflow.
 
 ## What it does
 
@@ -317,7 +307,6 @@ boards/
 app.overlay
 prj.conf
 CMakeLists.txt
-tests/
 ```
 
 ### `pwm_input`
@@ -369,8 +358,7 @@ Expected tools:
 - Kconfig for firmware options.
 - Zephyr GPIO API for PWM input edge interrupts.
 - Zephyr PWM API for ESP32-C3 LEDC motor output.
-- Ztest for unit tests.
-- Twister for building and running tests.
+- macOS firmware build validation with `just build`.
 
 Avoid project-specific build scripts unless they wrap standard Zephyr commands and remain optional.
 
@@ -382,7 +370,6 @@ just build
 just clean
 just flash
 just log
-cd .zephyr && ../.venv/bin/west -z zephyr twister -T ../tests --outdir ../build/twister-out
 ```
 
 A custom board definition can be added later as `cyberbrick_esc_esp32c3`, but early development may use an existing ESP32-C3 Zephyr board target plus an application overlay.

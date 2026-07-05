@@ -4,6 +4,10 @@ This file defines how coding agents should work on CyberBrick ESC.
 
 The project must stay narrow, safety-first, and Zephyr-native.
 
+CyberBrick ESC is a proof of concept. It is not intended for production
+deployment, and agents must not describe it as production-ready,
+safety-certified, or suitable for unattended use.
+
 ## Mission
 
 CyberBrick ESC turns CyberBrick Mini Tank hardware into a standard bidirectional dual brushed ESC controlled by normal hobby PWM input signals from a flight controller.
@@ -80,8 +84,7 @@ Preferred tools and mechanisms:
 - Zephyr Kconfig for build-time options.
 - Zephyr GPIO API for input capture edge interrupts.
 - Zephyr PWM API for motor PWM output.
-- Zephyr Ztest for unit tests.
-- Zephyr Twister for test execution.
+- Firmware validation through `just build` on macOS at this stage.
 
 Avoid:
 
@@ -250,9 +253,6 @@ src/
   motor_output.c
   pwm_input.c
   safety.c
-tests/
-  pwm_mapping/
-  safety/
 README.md
 AGENTS.md
 ```
@@ -332,29 +332,20 @@ Do not mix hardware pin constants into generic modules.
 
 ## Testing requirements
 
-Add tests for logic that does not require physical hardware.
+Twister and Ztest tests are not required for this proof-of-concept stage.
+Do not add Twister metadata, `testcase.yaml`, or Ztest scaffolding unless a
+human maintainer explicitly asks for it.
 
-Use Ztest and Twister.
+The required validation gate for now is that the firmware builds on macOS with:
 
-Minimum test coverage:
+```sh
+just build
+```
 
-- Pulse-width-to-command mapping.
-- 1000 us maps to full reverse.
-- 1500 us maps to stop.
-- 2000 us maps to full forward.
-- Neutral deadband mapping.
-- Lower and upper clamping.
-- Invalid pulse rejection.
-- Neutral arming requirement.
-- Failsafe timeout transition.
-- Failsafe recovery requiring neutral input.
-- Brake and coast stop-mode command generation.
-- Forward and reverse H-bridge output generation.
-- Motor inversion mapping.
-- Slew-rate limiting, if implemented.
-- Optional throttle/steering mixing, if implemented.
-
-Hardware-specific GPIO interrupt behavior can be verified manually during bring-up, but pure mapping and safety logic should be testable on host or native simulation targets where possible.
+Small standalone host checks for pure C logic are acceptable when useful, but
+they must remain optional and must not become a parallel firmware framework.
+Hardware-specific GPIO and motor behavior can be verified manually during
+bring-up.
 
 ## Definition of done
 
@@ -366,13 +357,12 @@ A change is not complete unless:
 - It preserves safe boot and failsafe behavior.
 - It keeps pin assignments in devicetree.
 - It updates README documentation when user-visible behavior changes.
-- It adds or updates tests for changed safety or mapping logic.
+- It remains buildable on macOS with the project `just` workflow.
 
 Preferred validation commands:
 
 ```sh
-west build -b esp32c3_devkitm .
-west twister -T tests
+just build
 ```
 
 If a custom board is added later, also validate that board target.
