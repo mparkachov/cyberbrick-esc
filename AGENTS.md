@@ -216,6 +216,25 @@ right = throttle - steering
 
 The mixed result must be clamped to -1000 to +1000. Mixing code must be isolated from the motor output driver.
 
+## Visual feedback rule
+
+The onboard RGB LED is proof-of-concept visual feedback for testing motor
+behavior while motors are disconnected or the vehicle is physically safe.
+
+Default LED behavior:
+
+- Blue means powered and neutral, so motors should not move. This is the boot
+  state.
+- Green means the dominant final motor command is forward. Intensity reflects
+  the largest forward command magnitude.
+- Red means the dominant final motor command is reverse. Intensity reflects the
+  largest reverse command magnitude.
+- If channels disagree, use deterministic behavior documented in README. The
+  current rule is dominant absolute command wins; an exact tie returns to blue.
+
+The LED must be derived from final safe motor commands after safety processing.
+It must not affect arming, failsafe, input capture, or motor output commands.
+
 ## Safety invariants
 
 These rules are mandatory and should be protected by tests where practical.
@@ -248,11 +267,13 @@ include/
     motor_output.h
     pwm_input.h
     safety.h
+    status_led.h
 src/
   main.c
   motor_output.c
   pwm_input.c
   safety.c
+  status_led.c
 README.md
 AGENTS.md
 ```
@@ -283,6 +304,13 @@ Module responsibilities:
 - Applies clamping.
 - Applies neutral-before-arm rules.
 - Provides safe commands to `motor_output`.
+
+### `status_led`
+
+- Owns visual-only RGB LED updates.
+- Derives LED color and intensity from final safe motor commands.
+- Keeps LED pin, bus, or PWM details in devicetree/Kconfig.
+- Does not change safety, input, or motor output state.
 
 ### `main`
 

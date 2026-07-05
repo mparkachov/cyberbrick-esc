@@ -4,10 +4,30 @@ config CYBERBRICK_ESC
 	bool "CyberBrick ESC firmware"
 	default y
 	select GPIO
+	select LED_STRIP if CYBERBRICK_ESC_STATUS_LED
 	select PWM
 	help
 	  Zephyr-native bidirectional brushed ESC firmware for CyberBrick
 	  ESP32-C3 hardware.
+
+config CYBERBRICK_ESC_STATUS_LED
+	bool "RGB status LED motor feedback"
+	default y
+	help
+	  Drive the board RGB LED as proof-of-concept visual feedback for
+	  the final safe motor commands.
+
+config CYBERBRICK_ESC_STATUS_LED_NEUTRAL_BRIGHTNESS
+	int "Neutral blue status LED brightness"
+	default 32
+	range 1 255
+	depends on CYBERBRICK_ESC_STATUS_LED
+
+config CYBERBRICK_ESC_STATUS_LED_MIN_ACTIVE_BRIGHTNESS
+	int "Minimum moving status LED brightness"
+	default 16
+	range 1 255
+	depends on CYBERBRICK_ESC_STATUS_LED
 
 config CYBERBRICK_ESC_INPUT_TIMEOUT_MS
 	int "Input failsafe timeout in milliseconds"

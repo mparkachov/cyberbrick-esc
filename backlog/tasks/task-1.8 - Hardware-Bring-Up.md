@@ -4,6 +4,7 @@ title: Hardware Bring-Up
 status: To Do
 assignee: []
 created_date: '2026-07-04 19:32'
+updated_date: '2026-07-05 05:08'
 labels:
   - hardware
   - validation
@@ -12,6 +13,7 @@ milestone: m-0
 dependencies:
   - TASK-1.6
   - TASK-1.7
+  - TASK-1.10
 parent_task_id: TASK-1
 priority: medium
 ordinal: 9000

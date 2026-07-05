@@ -9,5 +9,5 @@ target_sources(app PRIVATE
   src/motor_output.c
   src/pwm_input.c
   src/safety.c
+  src/status_led.c
 )
-

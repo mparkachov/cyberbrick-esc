@@ -1,4 +1,5 @@
 #include <zephyr/dt-bindings/gpio/gpio.h>
+#include <zephyr/dt-bindings/led/led.h>
 #include <zephyr/dt-bindings/pinctrl/esp32c3-pinctrl.h>
 #include <zephyr/dt-bindings/pwm/pwm.h>
 
@@ -10,6 +11,7 @@
 		motor-1-b = &motor1_b;
 		motor-2-a = &motor2_a;
 		motor-2-b = &motor2_b;
+		led-strip = &status_led_strip;
 	};
 
 	cyberbrick_esc_inputs {
@@ -52,6 +54,13 @@
 };
 
 &pinctrl {
+	spim2_default: spim2_default {
+		group2 {
+			pinmux = <SPIM2_MOSI_GPIO8>;
+			output-low;
+		};
+	};
+
 	ledc0_motors: ledc0_motors {
 		group1 {
 			pinmux = <LEDC_CH0_GPIO4>,
@@ -60,6 +69,26 @@
 				 <LEDC_CH3_GPIO7>;
 			output-enable;
 		};
+	};
+};
+
+&spi2 {
+	line-idle-low;
+	pinctrl-0 = <&spim2_default>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	status_led_strip: ws2812@0 {
+		compatible = "worldsemi,ws2812-spi";
+		reg = <0>;
+		spi-max-frequency = <6400000>;
+		chain-length = <1>;
+		spi-cpha;
+		spi-one-frame = <0xf0>;
+		spi-zero-frame = <0xc0>;
+		color-mapping = <LED_COLOR_ID_GREEN
+				 LED_COLOR_ID_RED
+				 LED_COLOR_ID_BLUE>;
 	};
 };
 
@@ -90,4 +119,3 @@
 		timer = <0>;
 	};
 };
-

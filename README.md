@@ -105,8 +105,20 @@ Default behavior:
 - A configurable deadband around 1500 us is treated as stop.
 - Values outside the configured valid range are rejected.
 - If input is lost, both motors enter a safe stop state.
+- The onboard RGB LED gives visual feedback for the final safe motor commands.
 
 This makes the board useful as a small dual brushed ESC for flight controllers that can output normal center-neutral PWM motor or servo signals.
+
+## Visual motor feedback
+
+The RGB LED is proof-of-concept feedback for testing with motors disconnected or otherwise physically safe.
+
+- Blue means the device is on and both final motor commands are neutral, so motors should not move. This is the boot state.
+- Green means the dominant final motor command is forward. Brightness increases with the largest forward command magnitude.
+- Red means the dominant final motor command is reverse. Brightness increases with the largest reverse command magnitude.
+- If one channel is forward and the other is reverse, the larger absolute command wins. If they are exactly tied, the LED returns to blue as a deterministic neutral/tie indication.
+
+The LED is visual feedback only. It is derived from the already-safe command array after safety processing and must not change arming, failsafe, input capture, or motor output behavior.
 
 ## Project direction
 
@@ -289,6 +301,7 @@ Before flashing or sending input signals, make the motor outputs physically safe
 - Use a current-limited supply during bring-up.
 - Confirm the flight-controller PWM signal is 3.3 V safe before connecting it to GPIO0 or GPIO1.
 - Start with both inputs at neutral and verify the firmware logs an armed state only after the neutral arming delay.
+- Use the RGB LED as a visual preview of motor direction and relative speed before connecting motors.
 - Verify input loss and invalid pulse widths stop both motors before testing nonzero commands.
 
 ## Software architecture
@@ -300,9 +313,11 @@ src/main.c
 src/pwm_input.c
 src/motor_output.c
 src/safety.c
+src/status_led.c
 include/pwm_input.h
 include/motor_output.h
 include/safety.h
+include/status_led.h
 boards/
 app.overlay
 prj.conf
@@ -343,6 +358,15 @@ Responsibilities:
 - Clamp commands.
 - Apply deadband.
 - Apply slew-rate limits if enabled.
+
+### `status_led`
+
+Responsibilities:
+
+- Own visual-only RGB LED updates.
+- Derive LED color and intensity from final safe motor commands.
+- Keep LED pin or bus details in devicetree.
+- Avoid changing safety, input, or motor output state.
 
 ## Zephyr tooling
 
@@ -394,6 +418,9 @@ CONFIG_CYBERBRICK_ESC_STOP_MODE_BRAKE
 CONFIG_CYBERBRICK_ESC_STOP_MODE_COAST
 CONFIG_CYBERBRICK_ESC_MOTOR1_INVERT
 CONFIG_CYBERBRICK_ESC_MOTOR2_INVERT
+CONFIG_CYBERBRICK_ESC_STATUS_LED
+CONFIG_CYBERBRICK_ESC_STATUS_LED_NEUTRAL_BRIGHTNESS
+CONFIG_CYBERBRICK_ESC_STATUS_LED_MIN_ACTIVE_BRIGHTNESS
 CONFIG_CYBERBRICK_ESC_SLEW_LIMIT_ENABLE
 CONFIG_CYBERBRICK_ESC_MIXING_MODE_DIRECT
 CONFIG_CYBERBRICK_ESC_MIXING_MODE_THROTTLE_STEERING

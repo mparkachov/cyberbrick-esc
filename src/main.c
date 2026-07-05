@@ -6,6 +6,7 @@
 #include <cyberbrick_esc/motor_output.h>
 #include <cyberbrick_esc/pwm_input.h>
 #include <cyberbrick_esc/safety.h>
+#include <cyberbrick_esc/status_led.h>
 
 LOG_MODULE_REGISTER(cyberbrick_esc, LOG_LEVEL_INF);
 
@@ -37,15 +38,26 @@ int main(void)
 	struct cyberbrick_esc_safety_output output;
 	bool last_armed = false;
 	bool last_failsafe = false;
+	bool status_led_ready = false;
 	int ret;
 
 	LOG_INF("CyberBrick ESC boot");
 
 	cyberbrick_esc_safety_init(&safety);
 
+	ret = cyberbrick_esc_status_led_init();
+	if (ret != 0) {
+		LOG_WRN("Status LED init failed: %d", ret);
+	} else {
+		status_led_ready = true;
+	}
+
 	ret = cyberbrick_esc_motor_output_init();
 	if (ret != 0) {
 		(void)cyberbrick_esc_motor_output_stop();
+		if (status_led_ready) {
+			(void)cyberbrick_esc_status_led_show_neutral();
+		}
 		LOG_ERR("Motor output init failed: %d", ret);
 		return ret;
 	}
@@ -53,6 +65,9 @@ int main(void)
 	ret = cyberbrick_esc_pwm_input_init();
 	if (ret != 0) {
 		(void)cyberbrick_esc_motor_output_stop();
+		if (status_led_ready) {
+			(void)cyberbrick_esc_status_led_show_neutral();
+		}
 		LOG_ERR("PWM input init failed: %d", ret);
 		return ret;
 	}
@@ -67,7 +82,16 @@ int main(void)
 		ret = cyberbrick_esc_motor_output_apply(output.command);
 		if (ret != 0) {
 			(void)cyberbrick_esc_motor_output_stop();
+			if (status_led_ready) {
+				(void)cyberbrick_esc_status_led_show_neutral();
+			}
 			LOG_ERR("Motor output apply failed: %d", ret);
+		} else if (status_led_ready) {
+			ret = cyberbrick_esc_status_led_update(output.command);
+			if (ret != 0) {
+				LOG_WRN("Status LED update failed: %d", ret);
+				status_led_ready = false;
+			}
 		}
 
 		if (output.armed != last_armed || output.failsafe != last_failsafe) {
