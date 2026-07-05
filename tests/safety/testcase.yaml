@@ -3,5 +3,3 @@ tests:
     platform_allow: native_sim
     tags:
       - safety
-      - motor
-

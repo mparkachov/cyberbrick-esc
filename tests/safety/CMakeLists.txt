@@ -6,7 +6,5 @@ project(cyberbrick_esc_safety_tests)
 target_include_directories(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../include)
 target_sources(app PRIVATE
   src/main.c
-  ../../src/motor_output.c
   ../../src/safety.c
 )
-

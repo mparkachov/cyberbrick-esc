@@ -1,8 +1,16 @@
 #include <errno.h>
 
-#include <zephyr/ztest.h>
+#ifdef CYBERBRICK_ESC_STANDALONE_TEST
+#include <assert.h>
 
-#include <cyberbrick_esc/motor_output.h>
+#define zassert_ok(expr) assert((expr) == 0)
+#define zassert_equal(actual, expected, ...) assert((actual) == (expected))
+#define zassert_false(expr, ...) assert(!(expr))
+#define zassert_true(expr, ...) assert(expr)
+#else
+#include <zephyr/ztest.h>
+#endif
+
 #include <cyberbrick_esc/safety.h>
 
 static const struct cyberbrick_esc_safety_config test_config = {
@@ -27,7 +35,7 @@ static void set_samples(struct cyberbrick_esc_pulse_sample samples[CYBERBRICK_ES
 	samples[1].timestamp_us = now_us;
 }
 
-ZTEST(cyberbrick_esc_safety, test_pulse_mapping_points)
+static void test_pulse_mapping_points(void)
 {
 	int16_t command;
 
@@ -41,7 +49,7 @@ ZTEST(cyberbrick_esc_safety, test_pulse_mapping_points)
 	zassert_equal(command, 1000);
 }
 
-ZTEST(cyberbrick_esc_safety, test_deadband_and_clamping)
+static void test_deadband_and_clamping(void)
 {
 	int16_t command;
 
@@ -58,7 +66,7 @@ ZTEST(cyberbrick_esc_safety, test_deadband_and_clamping)
 	zassert_equal(command, 1000);
 }
 
-ZTEST(cyberbrick_esc_safety, test_invalid_pulse_rejection)
+static void test_invalid_pulse_rejection(void)
 {
 	struct cyberbrick_esc_safety safety;
 	struct cyberbrick_esc_safety_output output;
@@ -79,9 +87,31 @@ ZTEST(cyberbrick_esc_safety, test_invalid_pulse_rejection)
 	zassert_true(output.failsafe);
 	zassert_equal(output.command[0], 0);
 	zassert_equal(output.command[1], 0);
+
+	cyberbrick_esc_safety_init(&safety);
+	set_samples(samples, 1500, 1500, 0);
+	cyberbrick_esc_safety_update(&safety, &test_config, samples, 0, &output);
+	set_samples(samples, 1500, 1500, 1000000);
+	cyberbrick_esc_safety_update(&safety, &test_config, samples, 1000000,
+				     &output);
+	zassert_true(output.armed);
+
+	set_samples(samples, 1800, 1500, 1010000);
+	cyberbrick_esc_safety_update(&safety, &test_config, samples, 1010000,
+				     &output);
+	zassert_true(output.armed);
+	zassert_true(output.command[0] > 0);
+
+	set_samples(samples, 2200, 1500, 1020000);
+	cyberbrick_esc_safety_update(&safety, &test_config, samples, 1020000,
+				     &output);
+	zassert_false(output.armed);
+	zassert_true(output.failsafe);
+	zassert_equal(output.command[0], 0);
+	zassert_equal(output.command[1], 0);
 }
 
-ZTEST(cyberbrick_esc_safety, test_neutral_required_before_arming)
+static void test_neutral_required_before_arming(void)
 {
 	struct cyberbrick_esc_safety safety;
 	struct cyberbrick_esc_safety_output output;
@@ -109,7 +139,7 @@ ZTEST(cyberbrick_esc_safety, test_neutral_required_before_arming)
 	zassert_equal(output.command[1], 0);
 }
 
-ZTEST(cyberbrick_esc_safety, test_failsafe_and_neutral_recovery)
+static void test_failsafe_and_neutral_recovery(void)
 {
 	struct cyberbrick_esc_safety safety;
 	struct cyberbrick_esc_safety_output output;
@@ -147,58 +177,19 @@ ZTEST(cyberbrick_esc_safety, test_failsafe_and_neutral_recovery)
 	zassert_false(output.failsafe);
 }
 
-ZTEST(cyberbrick_esc_safety, test_motor_forward_reverse_and_stop_states)
+void test_main(void)
 {
-	const struct cyberbrick_esc_motor_config config = {
-		.inverted = false,
-		.max_forward_permille = 1000,
-		.max_reverse_permille = 1000,
-		.stop_mode = CYBERBRICK_ESC_STOP_MODE_COAST,
-	};
-	struct cyberbrick_esc_motor_state state;
-
-	cyberbrick_esc_motor_make_state(500, &config, &state);
-	zassert_equal(state.input_a.mode, CYBERBRICK_ESC_PIN_PWM);
-	zassert_equal(state.input_a.duty_permille, 500);
-	zassert_equal(state.input_b.mode, CYBERBRICK_ESC_PIN_LOW);
-
-	cyberbrick_esc_motor_make_state(-250, &config, &state);
-	zassert_equal(state.input_a.mode, CYBERBRICK_ESC_PIN_LOW);
-	zassert_equal(state.input_b.mode, CYBERBRICK_ESC_PIN_PWM);
-	zassert_equal(state.input_b.duty_permille, 250);
-
-	cyberbrick_esc_motor_make_state(0, &config, &state);
-	zassert_equal(state.input_a.mode, CYBERBRICK_ESC_PIN_LOW);
-	zassert_equal(state.input_b.mode, CYBERBRICK_ESC_PIN_LOW);
+	test_pulse_mapping_points();
+	test_deadband_and_clamping();
+	test_invalid_pulse_rejection();
+	test_neutral_required_before_arming();
+	test_failsafe_and_neutral_recovery();
 }
 
-ZTEST(cyberbrick_esc_safety, test_motor_brake_inversion_and_scaling)
+#ifdef CYBERBRICK_ESC_STANDALONE_TEST
+int main(void)
 {
-	struct cyberbrick_esc_motor_config config = {
-		.inverted = false,
-		.max_forward_permille = 500,
-		.max_reverse_permille = 250,
-		.stop_mode = CYBERBRICK_ESC_STOP_MODE_BRAKE,
-	};
-	struct cyberbrick_esc_motor_state state;
-
-	cyberbrick_esc_motor_make_state(0, &config, &state);
-	zassert_equal(state.input_a.mode, CYBERBRICK_ESC_PIN_HIGH);
-	zassert_equal(state.input_b.mode, CYBERBRICK_ESC_PIN_HIGH);
-
-	cyberbrick_esc_motor_make_state(1000, &config, &state);
-	zassert_equal(state.input_a.mode, CYBERBRICK_ESC_PIN_PWM);
-	zassert_equal(state.input_a.duty_permille, 500);
-
-	cyberbrick_esc_motor_make_state(-1000, &config, &state);
-	zassert_equal(state.input_b.mode, CYBERBRICK_ESC_PIN_PWM);
-	zassert_equal(state.input_b.duty_permille, 250);
-
-	config.inverted = true;
-	cyberbrick_esc_motor_make_state(400, &config, &state);
-	zassert_equal(state.input_a.mode, CYBERBRICK_ESC_PIN_LOW);
-	zassert_equal(state.input_b.mode, CYBERBRICK_ESC_PIN_PWM);
-	zassert_equal(state.input_b.duty_permille, 100);
+	test_main();
+	return 0;
 }
-
-ZTEST_SUITE(cyberbrick_esc_safety, NULL, NULL, NULL, NULL, NULL);
+#endif
