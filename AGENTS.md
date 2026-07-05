@@ -85,14 +85,18 @@ Use stock MicroPython tooling against the existing REPL/filesystem.
 Preferred tools and mechanisms:
 
 - `mpremote` for REPL, filesystem copy, reset, backup, and restore.
-- A host-side serial Ctrl-C preflight before filesystem operations, because the
-  stock CyberBrick app may be running and mpremote cannot enter raw REPL until
-  the app is interrupted.
+- A host-side serial helper for inspection and stop operations when mpremote
+  cannot reliably enter raw REPL after USB reconnects.
 - `just` as the thin project command runner.
 - `python3 -m unittest` for host checks of pure logic.
 - Persistent app deployment by preserving stock `boot.py`, then copying a
   reversible PoC `boot.py`, `main.py`, and library files to the MicroPython
   filesystem.
+- The PoC `boot.py` must keep a sticky double-reset safe REPL mode using
+  `cyberbrick_boot_pending.txt` and `cyberbrick_safe_repl.txt`, so recovery does
+  not depend on a fast Ctrl-C race. Safe mode may rename deployed `main.py` to
+  `main.poc.py` to prevent MicroPython from auto-running it after `boot.py`
+  returns.
 
 Avoid:
 
@@ -124,9 +128,7 @@ Default status LED:
 
 | Function | GPIO |
 | --- | ---: |
-| Onboard RGB LED candidate | GPIO8 |
-| Stock LED/buzzer channel 1 candidate | GPIO21 |
-| Stock LED/buzzer channel 2 candidate | GPIO20 |
+| Onboard RGB LED WS2812/NeoPixel | GPIO8 |
 
 Reserved motor pins:
 
@@ -142,8 +144,8 @@ Avoid using these pins in normal MicroPython development:
 - GPIO2, because it is an ESP32-C3 strapping pin.
 - GPIO4 to GPIO7, because they are reserved for later motor output work.
 - GPIO18 and GPIO19, because they are USB pins.
-- GPIO20 and GPIO21 for ESC input, because the observed stock MicroPython board
-  uses them for onboard LED channels.
+- GPIO20 and GPIO21 for ESC input, because they may be tied to debug, UART,
+  LED, or buzzer functions on CyberBrick-related hardware.
 
 Keep hardware pin assignments centralized in `micropython/lib/cyberbrick_esc/config.py`.
 
@@ -220,6 +222,7 @@ Expected layout:
 justfile
 requirements.txt
 micropython/
+  boot.py
   main.py
   examples/
     blink_boot.py

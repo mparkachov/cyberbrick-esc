@@ -13,8 +13,8 @@ RESERVED_MOTOR_PINS = {4, 5, 6, 7}
 class AppSkeletonConfigTest(unittest.TestCase):
     def test_default_pin_config(self):
         self.assertEqual(config.INPUT_PINS, (1, 0))
-        self.assertEqual(config.LED_DATA_PINS, (8, 20, 21))
-        self.assertEqual(config.LED_PIXEL_COUNTS, (1, 4, 4))
+        self.assertEqual(config.LED_DATA_PINS, (8,))
+        self.assertEqual(config.LED_PIXEL_COUNTS, (1,))
 
     def test_default_signal_config(self):
         self.assertEqual(config.MIN_VALID_US, 900)

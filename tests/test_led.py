@@ -98,6 +98,26 @@ class StatusLedTest(unittest.TestCase):
             [(0, 0, config.STATUS_LED_NEUTRAL_BRIGHTNESS)] * len(config.LED_DATA_PINS),
         )
 
+    def test_status_led_skips_redundant_bus_writes(self):
+        led = StatusLed()
+        initial_write_counts = [len(bus.colors) for bus in FakePixelBus.instances]
+
+        led.update([0, 0])
+        self.assertEqual(
+            [len(bus.colors) for bus in FakePixelBus.instances],
+            initial_write_counts,
+        )
+
+        led.update([1000, 0])
+        after_change_counts = [len(bus.colors) for bus in FakePixelBus.instances]
+        self.assertEqual(after_change_counts, [count + 1 for count in initial_write_counts])
+
+        led.update([1000, 0])
+        self.assertEqual(
+            [len(bus.colors) for bus in FakePixelBus.instances],
+            after_change_counts,
+        )
+
     def test_led_update_depends_only_on_command_argument(self):
         signature = inspect.signature(StatusLed.update)
         self.assertEqual(list(signature.parameters), ["self", "commands"])

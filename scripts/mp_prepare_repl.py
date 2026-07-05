@@ -13,9 +13,10 @@ from serial.tools import list_ports
 
 
 BAUDRATE = 115200
-INTERRUPT_COUNT = 5
-INTERRUPT_DELAY_S = 0.12
+INTERRUPT_COUNT = 16
+INTERRUPT_DELAY_S = 0.2
 SETTLE_DELAY_S = 0.25
+READ_CHUNK_BYTES = 4096
 
 
 def main() -> int:
@@ -56,13 +57,32 @@ def resolve_port(requested: str) -> str:
 
 def interrupt_to_repl(port: str) -> None:
     try:
-        with serial.Serial(port, BAUDRATE, timeout=0.2, write_timeout=1) as stream:
+        stream = serial.serial_for_url(
+            port,
+            baudrate=BAUDRATE,
+            timeout=0.1,
+            write_timeout=0.5,
+            do_not_open=True,
+        )
+        stream.dtr = False
+        stream.rts = False
+        stream.open()
+
+        try:
+            seen = bytearray()
             for _ in range(INTERRUPT_COUNT):
                 stream.write(b"\x03")
-                stream.flush()
                 time.sleep(INTERRUPT_DELAY_S)
+                seen.extend(stream.read(READ_CHUNK_BYTES))
+                if b">>> " in seen:
+                    break
+
             time.sleep(SETTLE_DELAY_S)
-            stream.read(4096)
+            stream.read(READ_CHUNK_BYTES)
+            stream.rts = False
+            stream.dtr = False
+        finally:
+            stream.close()
     except serial.SerialException as exc:
         raise SystemExit(f"Could not interrupt MicroPython app on {port}: {exc}") from exc
 

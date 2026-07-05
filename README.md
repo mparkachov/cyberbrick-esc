@@ -53,7 +53,7 @@ Known target hardware:
 
 - MCU: ESP32-C3 on CyberBrick Multi-Function Core Board.
 - Runtime: stock CyberBrick MicroPython firmware with REPL access.
-- LED: stock LED channels using WS2812/NeoPixel strings on GPIO21 and GPIO20.
+- LED: onboard WS2812/NeoPixel on GPIO8.
 - Inputs: standard hobby PWM signal pins from a flight controller or signal
   generator.
 
@@ -63,8 +63,7 @@ Default pins:
 | --- | --- | ---: |
 | ESC input 1 | Servo S3 signal | GPIO1 |
 | ESC input 2 | Servo S4 signal | GPIO0 |
-| Onboard RGB LED channel 1 | Board LED | GPIO21 |
-| Onboard RGB LED channel 2 | Board LED | GPIO20 |
+| Onboard RGB LED | Board LED | GPIO8 |
 
 Reserved pins:
 
@@ -116,12 +115,12 @@ Back up the current board filesystem before deploying:
 just mp-backup
 ```
 
-Backups are saved under gitignored `device-backups/`. Backup, deploy, stop, and
-restore recipes first send Ctrl-C to the serial port because the stock
-CyberBrick script may be running; this mirrors the manual step needed to drop to
-the REPL before raw filesystem operations. The recipes then call `mpremote
-resume` so mpremote does not soft-reset the board and restart the stock script
-before filesystem access.
+Backups are saved under gitignored `device-backups/`. Backup, deploy, and
+restore recipes use `mpremote` against the stock filesystem. Inspection and
+stop recipes use `scripts/mp_serial_fs.py`, which opens the USB serial port with
+DTR/RTS low, sends Ctrl-C, enters raw REPL on the same connection, and then
+performs filesystem operations. This mirrors the manual terminal recovery path
+needed on the observed stock board.
 
 Deploy the persistent onboard LED blink:
 
@@ -170,6 +169,21 @@ This backs up the board filesystem, preserves the stock `boot.py` as remote
 `micropython/main.py`, and `micropython/lib/cyberbrick_esc/` to the board, and
 resets it.
 
+After deployment, reset or power-cycle should start the simulator with no host
+command. With no valid PWM input, the expected visible state is safe neutral
+blue, not the blink example.
+
+The deployed PoC `boot.py` has a reset-based safe REPL mode. On normal boot it
+creates `cyberbrick_boot_pending.txt`, waits five seconds, removes that marker,
+and starts `main.py`. If the board resets or loses power during that five-second
+window, the next boot creates `cyberbrick_safe_repl.txt` and stays at the REPL
+instead of starting the app. In safe mode, `boot.py` renames the PoC `main.py`
+to `main.poc.py` so the MicroPython boot sequence cannot immediately run it
+after `boot.py` returns. The safe marker is sticky across USB reconnects so
+inspection and recovery commands do not depend on a fast Ctrl-C race. `just
+deploy` clears both markers and reinstalls `main.py` before resetting into the
+app.
+
 Stop the deployed app and recover stock startup:
 
 ```sh
@@ -183,6 +197,36 @@ Restore the latest local backup:
 
 ```sh
 just mp-restore
+```
+
+To force safe REPL mode without a terminal, reset or power-cycle the board once,
+then reset or power-cycle it again within five seconds. After the second boot,
+run `just mp-tree` or `just mp-stop`.
+
+If automated recovery still cannot enter raw REPL, open the board in a serial
+terminal with DTR/RTS low and use the same double-reset sequence. From the `>>>`
+prompt, stock boot can be restored manually:
+
+```python
+import os, machine
+for path in ("cyberbrick_boot_pending.txt", "cyberbrick_safe_repl.txt", "main.poc.py"):
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+try:
+    os.remove("boot.py")
+except OSError:
+    pass
+try:
+    os.rename("boot.stock.py", "boot.py")
+except OSError:
+    pass
+try:
+    os.remove("main.py")
+except OSError:
+    pass
+machine.reset()
 ```
 
 Run host checks:
@@ -236,9 +280,13 @@ micropython/
       app.py
       config.py
       led.py
+      pixels.py
       pwm_input.py
       safety.py
 tests/
+  test_app_skeleton.py
+  test_led.py
+  test_pwm_input.py
   test_safety.py
 backlog/
   milestones/

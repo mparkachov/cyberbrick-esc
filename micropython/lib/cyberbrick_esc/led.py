@@ -10,6 +10,7 @@ class StatusLed:
     def __init__(self):
         from cyberbrick_esc.pixels import PixelBus
 
+        self._last_color = None
         self._buses = tuple(
             PixelBus(pin_id, count)
             for pin_id, count in zip(config.LED_DATA_PINS, config.LED_PIXEL_COUNTS)
@@ -25,6 +26,10 @@ class StatusLed:
 
     def _apply_state(self, direction, brightness):
         color = rgb_from_state(direction, brightness)
+        if color == self._last_color:
+            return
+
+        self._last_color = color
         for bus in self._buses:
             bus.show(color)
 
