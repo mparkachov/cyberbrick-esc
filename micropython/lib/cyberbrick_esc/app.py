@@ -1,4 +1,13 @@
-from time import sleep_ms, ticks_us
+try:
+    from time import sleep_ms, ticks_us
+except ImportError:
+    import time
+
+    def sleep_ms(milliseconds):
+        time.sleep(milliseconds / 1000)
+
+    def ticks_us():
+        return time.monotonic_ns() // 1000
 
 from cyberbrick_esc import config
 from cyberbrick_esc.led import StatusLed

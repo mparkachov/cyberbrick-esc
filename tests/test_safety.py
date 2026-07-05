@@ -14,6 +14,13 @@ def sample(width_us, timestamp_us=0, valid=True):
     return (width_us, timestamp_us, valid)
 
 
+class ObjectSample:
+    def __init__(self, pulse_width_us, timestamp_us, valid):
+        self.pulse_width_us = pulse_width_us
+        self.timestamp_us = timestamp_us
+        self.valid = valid
+
+
 class SafetyMappingTest(unittest.TestCase):
     def test_public_pulse_mapping(self):
         self.assertEqual(map_pulse_us(1000), -1000)
@@ -29,6 +36,10 @@ class SafetyMappingTest(unittest.TestCase):
             map_pulse_us(config.MIN_VALID_US - 1)
         with self.assertRaises(ValueError):
             map_pulse_us(config.MAX_VALID_US + 1)
+        with self.assertRaises(ValueError):
+            map_pulse_us("1500")
+        with self.assertRaises(ValueError):
+            map_pulse_us(True)
 
     def test_neutral_before_arm_then_command(self):
         safety = Safety()
@@ -51,6 +62,38 @@ class SafetyMappingTest(unittest.TestCase):
         self.assertTrue(output.armed)
         self.assertGreater(output.commands[0], 0)
         self.assertEqual(output.commands[1], 0)
+
+    def test_startup_requires_valid_neutral_hold_before_arming(self):
+        safety = Safety()
+        armed_at_us = config.ARMING_TIME_MS * 1000
+
+        output = safety.update((sample(2000, 0), sample(1500, 0)), 0)
+        self.assertFalse(output.armed)
+        self.assertFalse(output.failsafe)
+        self.assertEqual(output.commands, [0, 0])
+
+        output = safety.update(
+            (sample(2000, armed_at_us), sample(1500, armed_at_us)),
+            armed_at_us,
+        )
+        self.assertFalse(output.armed)
+        self.assertEqual(output.commands, [0, 0])
+
+        neutral_start_us = armed_at_us + 1
+        output = safety.update(
+            (sample(1500, neutral_start_us), sample(1500, neutral_start_us)),
+            neutral_start_us,
+        )
+        self.assertFalse(output.armed)
+        self.assertEqual(output.commands, [0, 0])
+
+        neutral_held_us = neutral_start_us + config.ARMING_TIME_MS * 1000
+        output = safety.update(
+            (sample(1500, neutral_held_us), sample(1500, neutral_held_us)),
+            neutral_held_us,
+        )
+        self.assertTrue(output.armed)
+        self.assertEqual(output.commands, [0, 0])
 
     def test_failsafe_requires_neutral_recovery(self):
         safety = Safety()
@@ -80,6 +123,71 @@ class SafetyMappingTest(unittest.TestCase):
         )
         self.assertTrue(output.armed)
         self.assertFalse(output.failsafe)
+        self.assertEqual(output.commands, [0, 0])
+
+    def test_missing_stale_invalid_or_malformed_input_outputs_zero(self):
+        arming_time_us = config.ARMING_TIME_MS * 1000
+        cases = (
+            None,
+            (sample(1500, 0),),
+            (sample(1500, 0, False), sample(1500, 0)),
+            (sample(1500, 0), sample(1500, 0)),
+            (sample(config.MAX_VALID_US + 1, arming_time_us, True), sample(1500, arming_time_us)),
+            ((1500,), sample(1500, arming_time_us)),
+            (sample("1500", arming_time_us), sample(1500, arming_time_us)),
+            (sample(1500, arming_time_us, 1), sample(1500, arming_time_us)),
+            (None, sample(1500, arming_time_us)),
+        )
+
+        for samples in cases:
+            with self.subTest(samples=samples):
+                safety = Safety()
+                output = safety.update(samples, arming_time_us)
+                self.assertFalse(output.armed)
+                self.assertTrue(output.failsafe)
+                self.assertEqual(output.commands, [0, 0])
+
+    def test_bad_input_disarms_and_clears_previous_command(self):
+        safety = Safety()
+        armed_at_us = config.ARMING_TIME_MS * 1000
+        safety.update((sample(1500, 0), sample(1500, 0)), 0)
+        safety.update((sample(1500, armed_at_us), sample(1500, armed_at_us)), armed_at_us)
+
+        commanded_at_us = armed_at_us + 1000
+        output = safety.update(
+            (sample(2000, commanded_at_us), sample(1500, commanded_at_us)),
+            commanded_at_us,
+        )
+        self.assertTrue(output.armed)
+        self.assertEqual(output.commands, [1000, 0])
+
+        bad_at_us = commanded_at_us + 1000
+        output = safety.update(
+            (sample("2000", bad_at_us), sample(1500, bad_at_us)),
+            bad_at_us,
+        )
+
+        self.assertFalse(output.armed)
+        self.assertTrue(output.failsafe)
+        self.assertEqual(output.commands, [0, 0])
+
+    def test_object_samples_are_accepted_when_valid_and_fresh(self):
+        safety = Safety()
+        armed_at_us = config.ARMING_TIME_MS * 1000
+        neutral = (
+            ObjectSample(1500, 0, True),
+            ObjectSample(1500, 0, True),
+        )
+        output = safety.update(neutral, 0)
+        self.assertFalse(output.armed)
+        self.assertEqual(output.commands, [0, 0])
+
+        held_neutral = (
+            ObjectSample(1500, armed_at_us, True),
+            ObjectSample(1500, armed_at_us, True),
+        )
+        output = safety.update(held_neutral, armed_at_us)
+        self.assertTrue(output.armed)
         self.assertEqual(output.commands, [0, 0])
 
 

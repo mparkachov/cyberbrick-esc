@@ -30,11 +30,16 @@ class Safety:
         all_fresh = True
         all_neutral = True
 
-        if samples is None or len(samples) != config.CHANNEL_COUNT:
+        if not sample_count_valid(samples):
             all_fresh = False
         else:
             for idx in range(config.CHANNEL_COUNT):
-                sample = samples[idx]
+                try:
+                    sample = samples[idx]
+                except (TypeError, IndexError, KeyError):
+                    all_fresh = False
+                    break
+
                 if not sample_fresh(sample, now_us):
                     all_fresh = False
                     break
@@ -81,6 +86,9 @@ class Safety:
 
 
 def map_pulse_us(pulse_width_us):
+    if not int_value(pulse_width_us):
+        raise ValueError("pulse width must be an integer")
+
     if pulse_width_us < config.MIN_VALID_US or pulse_width_us > config.MAX_VALID_US:
         raise ValueError("pulse outside valid range")
 
@@ -120,23 +128,55 @@ def sample_fresh(sample, now_us):
     if not sample_valid(sample):
         return False
 
-    age_us = ticks_diff(now_us, sample_timestamp_us(sample))
+    try:
+        age_us = ticks_diff(now_us, sample_timestamp_us(sample))
+    except (TypeError, ValueError):
+        return False
+
     return age_us >= 0 and age_us <= config.INPUT_TIMEOUT_MS * 1000
 
 
 def sample_pulse_width_us(sample):
-    if hasattr(sample, "pulse_width_us"):
-        return sample.pulse_width_us
-    return sample[0]
+    return sample_int_field(sample, "pulse_width_us", 0)
 
 
 def sample_timestamp_us(sample):
-    if hasattr(sample, "timestamp_us"):
-        return sample.timestamp_us
-    return sample[1]
+    return sample_int_field(sample, "timestamp_us", 1)
 
 
 def sample_valid(sample):
-    if hasattr(sample, "valid"):
-        return sample.valid
-    return sample[2]
+    try:
+        return sample_field(sample, "valid", 2) is True
+    except ValueError:
+        return False
+
+
+def sample_count_valid(samples):
+    try:
+        return len(samples) == config.CHANNEL_COUNT
+    except TypeError:
+        return False
+
+
+def sample_int_field(sample, attr, index):
+    value = sample_field(sample, attr, index)
+    if not int_value(value):
+        raise ValueError("sample field must be an integer")
+    return value
+
+
+def sample_field(sample, attr, index):
+    if sample is None:
+        raise ValueError("sample is missing")
+
+    if hasattr(sample, attr):
+        return getattr(sample, attr)
+
+    try:
+        return sample[index]
+    except (TypeError, IndexError, KeyError):
+        raise ValueError("sample field is missing")
+
+
+def int_value(value):
+    return isinstance(value, int) and not isinstance(value, bool)
