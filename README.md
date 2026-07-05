@@ -1,542 +1,233 @@
 # CyberBrick ESC
 
-CyberBrick ESC is an open source Zephyr firmware project that repurposes CyberBrick Mini Tank hardware as a standard bidirectional brushed ESC interface.
+CyberBrick ESC is a proof-of-concept project for making CyberBrick Mini Tank
+hardware behave like a standard center-neutral dual brushed ESC.
 
-The project goal is narrow: make the CyberBrick ESP32-C3 board and its onboard dual brushed motor driver behave like two standard center-neutral RC ESC channels for a flight controller or RC-style PWM source.
+This branch is now focused on a stock-firmware MicroPython PoC. It uses the
+existing MicroPython REPL and filesystem on the observed stock CyberBrick
+ESP32-C3 board instead of replacing firmware.
 
-This project is a proof of concept. It is not intended for production deployment, unattended operation, or safety-certified use.
+This project is not production-ready, not safety-certified, and not suitable for
+unattended operation.
 
-This is not CyberBrick stock firmware. It is not a rover controller, not a Bluetooth controller, not a UART motor adapter, and not a DShot or BLHeli ESC implementation.
+## Current result
 
-## Proof-of-concept result
+The previous Zephyr ESC architecture is technically feasible and is preserved on
+`origin/backup/zephyr`. It builds on macOS, but the observed stock CyberBrick
+board is not usable for plaintext Zephyr flashing: ESP32-C3 ROM flashing reports
+Secure Download Mode with flash encryption enabled, and esptool refuses to write
+the plaintext image because doing so can make the board unusable.
 
-The ESC functionality is technically feasible: the Zephyr firmware architecture,
-safe command mapping, input capture, motor output path, RGB feedback, local
-toolchain setup, and macOS `just build` workflow are implemented.
+For stock CyberBrick boards in that state:
 
-The PoC does not currently run on the observed stock CyberBrick board. The
-connected board at `/dev/tty.usbmodem1101` remains functional with its stock
-MicroPython runtime and can enter the MicroPython REPL after Ctrl-C, so it is
-not bricked. However, ESP32-C3 ROM flashing reports Secure Download Mode with
-flash encryption enabled, and esptool refuses to write the plaintext Zephyr
-binary because doing so can make the device unusable.
+- Do not force-flash plaintext firmware.
+- Treat the board as not Zephyr-flashable unless a maintainer provides an
+  approved signed/encrypted or vendor-compatible update flow.
+- Use this MicroPython PoC only through the existing REPL/filesystem.
 
-For this repository, the stock locked CyberBrick board is treated as not
-Zephyr-flashable unless a maintainer provides an approved vendor-compatible
-signed/encrypted flashing flow. Practical follow-up options are:
+The active milestone is `m-1`: stock MicroPython ESC simulator PoC.
 
-- Continue Zephyr validation on an unlocked ESP32-C3 development board or an
-  unlocked replacement CyberBrick board.
-- Ask the vendor for an official signed/encrypted firmware or recovery flow.
-- Explore a separate stock-firmware MicroPython PoC that uploads Python files
-  through the existing REPL instead of replacing firmware.
+## Scope
 
-Relevant references:
+The current MicroPython milestone is visual-first:
 
-- [ESP-IDF flash encryption](https://docs.espressif.com/projects/esp-idf/en/latest/esp32c3/security/flash-encryption.html)
-- [esptool flash protection](https://docs.espressif.com/projects/esptool/en/latest/esp32c3/esptool/basic-commands.html#flash-protection)
+```text
+Two center-neutral RC PWM inputs -> safe command mapping -> RGB LED feedback
+```
 
-## Current target
+Default public signal behavior:
 
-CyberBrick ESC targets this hardware combination when the ESP32-C3 firmware can
-be replaced:
+```text
+1000 us -> full reverse
+1500 us -> stop / neutral
+2000 us -> full forward
+```
 
-- CyberBrick Multi-Function Core Board based on ESP32-C3.
-- CyberBrick receiver and motor-driver board used in the Mini Tank.
-- Onboard dual brushed H-bridge motor driver.
-- Two standard RC PWM input signals from a flight controller.
-- Two bidirectional brushed motor outputs, one per tank motor.
+The MicroPython app does not drive the real H-bridge motor outputs. GPIO4-GPIO7
+are intentionally unused in this milestone. Real motor output requires a later
+maintainer-approved task after hardware measurements and safety review.
 
-The firmware is intended to be built with stock Zephyr and stock Zephyr tooling wherever possible.
+## Hardware contract
 
-## Build, flash, and log workflow
+Known target hardware:
 
-The project uses `just` as a thin command runner around stock Zephyr tools.
-Python tooling is installed into a local virtual environment with `uv`.
+- MCU: ESP32-C3 on CyberBrick Multi-Function Core Board.
+- Runtime: stock CyberBrick MicroPython firmware with REPL access.
+- LED: one onboard WS2812/NeoPixel RGB LED, currently treated as GPIO8.
+- Inputs: standard hobby PWM signal pins from a flight controller or signal
+  generator.
 
-Required host commands before setup:
+Default pins:
 
-- `python3`
-- `uv`
-- `git`
-- `just`
-- `dtc`
-- `screen`
+| Function | Connector | GPIO |
+| --- | --- | ---: |
+| ESC input 1 | Servo S3 signal | GPIO1 |
+| ESC input 2 | Servo S4 signal | GPIO0 |
+| Onboard RGB LED | Board LED | GPIO8 |
 
-Install the local Zephyr workspace, ESP-IDF checkout, Espressif tools, and Python tooling:
+Reserved pins:
+
+| Function | GPIO |
+| --- | ---: |
+| Motor 1 input A | GPIO4 |
+| Motor 1 input B | GPIO5 |
+| Motor 2 input A | GPIO6 |
+| Motor 2 input B | GPIO7 |
+
+Keep motors disconnected, tracks removed, or the vehicle physically unable to
+move during bring-up. Confirm input signals are 3.3 V safe before connecting
+them to ESP32-C3 GPIO pins.
+
+## Workflow
+
+Install local MicroPython tooling:
 
 ```sh
 just install
 ```
 
-`just install` resolves the latest stable non-release-candidate Zephyr and ESP-IDF tags from the official upstream repositories, creates `.venv`, initializes gitignored `.zephyr/` and `.esp-idf/` workspaces, installs Espressif tools into `.espressif/`, installs local ESP-IDF CMake and Ninja binaries, installs Python requirements with `uv pip`, and verifies that the local ESP32-C3 RISC-V toolchain is available.
+This creates `.venv` and installs `mpremote` from `requirements.txt`.
 
-Build the firmware:
-
-```sh
-just build
-```
-
-This runs:
+List available MicroPython devices:
 
 ```sh
-cd .zephyr && IDF_PATH=../.esp-idf IDF_TOOLS_PATH=../.espressif ZEPHYR_TOOLCHAIN_VARIANT=cross-compile CROSS_COMPILE=<local-riscv32-esp-elf-prefix> ../.venv/bin/west -z zephyr build -p auto -b esp32c3_devkitm -d ../build ..
+just mp-list
 ```
 
-The build recipe exports ESP-IDF's local tool paths first, so CMake, Ninja, OpenOCD, esptool, and the ESP32-C3 RISC-V compiler come from gitignored project folders after setup. Zephyr still needs the devicetree compiler executable `dtc` from the host environment.
-
-Remove generated build and test output while keeping installed toolchains and workspaces:
+Open the REPL:
 
 ```sh
-just clean
+just mp-repl
 ```
 
-This removes `build/` and build-only ccache data, but leaves `.venv/`, `.zephyr/`, `.esp-idf/`, and `.espressif/` intact.
+`just mp-repl` sends Ctrl-C first, so it should land at the REPL prompt even
+when the stock app is printing startup logs.
 
-Flash the connected board:
+The default device is `auto`. Override it when needed:
 
 ```sh
-just flash
+DEVICE=/dev/tty.usbmodem1101 just mp-repl
 ```
 
-`just flash` is intended for an unlocked ESP32-C3 target. It is not expected to
-work on stock CyberBrick boards that enforce Secure Download Mode with flash
-encryption enabled.
+Back up the current board filesystem before deploying:
 
-The default flash device is:
+```sh
+just mp-backup
+```
+
+Backups are saved under gitignored `device-backups/`. Backup, deploy, stop, and
+restore recipes first send Ctrl-C to the serial port because the stock
+CyberBrick script may be running; this mirrors the manual step needed to drop to
+the REPL before raw filesystem operations. The recipes then call `mpremote
+resume` so mpremote does not soft-reset the board and restart the stock script
+before filesystem access.
+
+Deploy the persistent onboard LED blink:
+
+```sh
+just deploy-blink
+```
+
+This backs up the board filesystem, copies
+`micropython/examples/blink_main.py` to remote `main.py`, and resets the board.
+After deployment, the LED should blink after board reset or power-on without any
+additional host command.
+
+Deploy the ESC simulator:
+
+```sh
+just deploy
+```
+
+This backs up the board filesystem, copies `micropython/main.py` and
+`micropython/lib/cyberbrick_esc/` to the board, and resets it.
+
+Stop the deployed app and recover REPL startup:
+
+```sh
+just mp-stop
+```
+
+Restore the latest local backup:
+
+```sh
+just mp-restore
+```
+
+Run host checks:
+
+```sh
+just test
+```
+
+## Simulator behavior
+
+Input decoding:
+
+- Valid pulse range: 900 us to 2100 us.
+- Command range: 1000 us to 2000 us.
+- Neutral: 1500 us.
+- Neutral deadband: 50 us on each side of neutral.
+- Failsafe timeout: 150 ms.
+- Neutral arming time: 1000 ms.
+- Control loop: 200 Hz.
+
+Safety behavior:
+
+- Missing, stale, malformed, or invalid input produces safe zero commands.
+- Startup requires both channels to be valid and neutral before arming.
+- Failsafe recovery also requires valid neutral input before re-arming.
+- Invalid pulse widths do not update the last-valid sample timestamp.
+
+RGB LED feedback is derived from final safe commands:
+
+- Blue: neutral or exact opposing direction tie.
+- Green: dominant final command is forward.
+- Red: dominant final command is reverse.
+- Green/red intensity reflects command magnitude.
+
+The LED is visual feedback only. It does not arm the app, change failsafe state,
+or control motor outputs.
+
+## Layout
 
 ```text
-/dev/tty.usbmodem1101
+justfile
+requirements.txt
+micropython/
+  main.py
+  examples/
+    blink_main.py
+  lib/
+    cyberbrick_esc/
+      app.py
+      config.py
+      led.py
+      pwm_input.py
+      safety.py
+tests/
+  test_safety.py
+backlog/
+  milestones/
+  tasks/
 ```
 
-If flashing reports that the ESP32-C3 is in Secure Download Mode with flash
-encryption enabled, stop. Do not pass esptool's force option to flash this
-proof-of-concept firmware. That state means the device is security-locked for
-encrypted or otherwise authorized images, and writing a plaintext Zephyr binary
-can make the board unusable. Use a development board or replacement CyberBrick
-board without flash encryption enabled, or document the board as not flashable
-for this PoC.
+## Unsupported
 
-Read firmware logs:
+Do not add these features by default:
 
-```sh
-just log
-```
-
-This opens:
-
-```sh
-screen /dev/tty.usbmodem1101 115200
-```
-
-At this proof-of-concept stage, the required software validation is that the firmware builds on macOS with `just build`. Twister tests are not part of the active workflow.
-
-## What it does
-
-CyberBrick ESC reads standard hobby RC PWM signals and drives the CyberBrick brushed motor outputs as a dual bidirectional ESC.
-
-Default behavior:
-
-- Input 1 controls ESC channel 1.
-- Input 2 controls ESC channel 2.
-- Each input is a normal servo or ESC pulse signal.
-- 1000 us means full reverse.
-- 1500 us means stop / neutral.
-- 2000 us means full forward.
-- A configurable deadband around 1500 us is treated as stop.
-- Values outside the configured valid range are rejected.
-- If input is lost, both motors enter a safe stop state.
-- The onboard RGB LED gives visual feedback for the final safe motor commands.
-
-This makes the board useful as a small dual brushed ESC for flight controllers that can output normal center-neutral PWM motor or servo signals.
-
-## Visual motor feedback
-
-The RGB LED is proof-of-concept feedback for testing with motors disconnected or otherwise physically safe.
-
-- Blue means the device is on and both final motor commands are neutral, so motors should not move. This is the boot state.
-- Green means the dominant final motor command is forward. Brightness increases with the largest forward command magnitude.
-- Red means the dominant final motor command is reverse. Brightness increases with the largest reverse command magnitude.
-- If one channel is forward and the other is reverse, the larger absolute command wins. If they are exactly tied, the LED returns to blue as a deterministic neutral/tie indication.
-
-The LED is visual feedback only. It is derived from the already-safe command array after safety processing and must not change arming, failsafe, input capture, or motor output behavior.
-
-## Project direction
-
-The development stream is forward-only, not the motor direction.
-
-In this project, forward-only development means:
-
-- Build one Zephyr-native firmware path.
-- Prefer stock Zephyr APIs and tooling.
-- Do not maintain parallel Arduino, ESP-IDF application, MicroPython, or CyberBrick-stock-compatible implementations.
-- Do not add compatibility shims for obsolete internal designs unless they directly support the current Zephyr ESC architecture.
-
-Motor control itself is bidirectional.
-
-## What it does not do
-
-CyberBrick ESC intentionally does not implement these features in the initial scope:
-
-- MAVLink.
-- MSP.
-- CRSF.
-- SBUS.
-- iBUS.
+- Plaintext firmware flashing to locked stock boards.
+- Real H-bridge motor output in the current MicroPython milestone.
+- MAVLink, MSP, CRSF, SBUS, iBUS, DShot, OneShot, or Multishot input.
 - UART command input.
-- DShot input.
-- OneShot input.
-- Multishot input.
-- BLHeli compatibility.
-- Wi-Fi or Bluetooth control.
+- Wi-Fi control, Bluetooth control, web UI, or OTA update logic.
 - CyberBrick stock protocol compatibility.
-- Autonomous rover logic.
-- Navigation, stabilization, odometry, or path planning.
-
-Those features can be discussed later, but the first project shape is a bidirectional center-neutral PWM ESC.
-
-## Hardware pin map
-
-### PWM input pins
-
-Use the CyberBrick receiver shield servo signal pins as input from the flight controller.
-
-| Function | CyberBrick connector | ESP32-C3 GPIO | Notes |
-| --- | --- | ---: | --- |
-| ESC input 1 | Servo S3 signal | GPIO1 | Recommended default input |
-| ESC input 2 | Servo S4 signal | GPIO0 | Recommended default input |
-| Optional input | Servo S1 signal | GPIO3 | Usable if needed |
-| Avoid by default | Servo S2 signal | GPIO2 | ESP32-C3 strapping pin |
-
-Recommended wiring:
-
-```text
-Flight controller OUT1 signal -> CyberBrick S3 signal -> GPIO1
-Flight controller OUT2 signal -> CyberBrick S4 signal -> GPIO0
-Flight controller GND         -> CyberBrick GND
-Flight controller 5V/red wire  -> not connected
-```
-
-Use signal and ground only unless the power topology has been verified.
-
-The servo header has a 5 V power rail for servos, but the ESP32-C3 GPIO signal pins are 3.3 V logic. Do not feed a 5 V PWM signal into an ESP32-C3 GPIO. If the flight controller output is 5 V, use a level shifter or resistor divider.
-
-### Motor output pins
-
-The onboard brushed motor driver is controlled by two GPIO/PWM inputs per motor.
-
-| Function | ESP32-C3 GPIO | Direction in this firmware |
-| --- | ---: | --- |
-| Motor 1 input A | GPIO4 | PWM output or static level |
-| Motor 1 input B | GPIO5 | PWM output or static level |
-| Motor 2 input A | GPIO6 | PWM output or static level |
-| Motor 2 input B | GPIO7 | PWM output or static level |
-
-Each motor uses a two-input H-bridge model:
-
-| Command | Input A | Input B |
-| --- | --- | --- |
-| Forward | PWM | Low |
-| Reverse | Low | PWM |
-| Brake stop | High | High |
-| Coast stop | Low | Low |
-
-If a motor spins in the wrong physical direction, fix it with the configured motor inversion option or swap the motor wires. Do not change the public input convention. The default public convention remains 1000 us reverse, 1500 us stop, and 2000 us forward.
-
-## ESC signal model
-
-CyberBrick ESC uses normal hobby PWM timing, not UART.
-
-Default input interpretation:
-
-| Pulse width | Meaning |
-| ---: | --- |
-| less than 900 us | invalid |
-| 1000 us | full reverse |
-| 1000 to 1500 us | proportional reverse command |
-| 1500 us | neutral / stop |
-| 1500 to 2000 us | proportional forward command |
-| 2000 us | full forward |
-| greater than 2100 us | invalid |
-
-Suggested defaults:
-
-- Minimum valid pulse: 900 us.
-- Maximum valid pulse: 2100 us.
-- Minimum command pulse: 1000 us.
-- Neutral command pulse: 1500 us.
-- Maximum command pulse: 2000 us.
-- Neutral deadband: 25 us to 50 us.
-- Input timeout: 100 ms to 250 ms.
-- Control loop rate: 100 Hz to 400 Hz.
-- Motor PWM output frequency: start at 1 kHz, allow configuration up to ultrasonic ranges after testing.
-
-Normalized command mapping:
-
-```text
-1000 us -> -1000
-1500 us -> 0
-2000 us -> +1000
-```
-
-Values between those points are mapped linearly. Values inside the neutral deadband are mapped to zero.
-
-## Operating modes
-
-### Direct dual ESC mode
-
-Direct mode is the default.
-
-```text
-Input 1 -> Motor 1 command
-Input 2 -> Motor 2 command
-```
-
-This is the best default for a flight controller that already performs skid-steer, differential-drive, or rover mixing.
-
-### Optional throttle / steering mode
-
-Throttle / steering mode may be added as a configuration option, but it is not required for the first bring-up.
-
-```text
-Input 1 -> throttle
-Input 2 -> steering
-left  = throttle + steering
-right = throttle - steering
-```
-
-The mixed result must be clamped to the normalized command range of -1000 to +1000.
-
-This mode is convenience logic only. CyberBrick ESC should still remain an ESC-style firmware, not a rover controller.
-
-## Safety behavior
-
-The firmware must be safe before it is useful.
-
-Required safety behavior:
-
-- Motors are stopped before PWM input capture is enabled.
-- Motors are stopped if hardware initialization fails.
-- Motors are stopped if no valid pulse is received within the configured timeout.
-- Motors remain stopped after boot until both inputs have been valid and neutral for the configured arming time.
-- Motors remain stopped after failsafe until the same neutral arming condition is met again.
-- Malformed, missing, or out-of-range input pulses do not refresh the failsafe timer.
-- Stop behavior is configurable as coast or brake.
-- The default stop behavior should be conservative and documented.
-- Motor inversion must not change the public input meaning. It only changes physical output polarity.
-
-Bench testing should be done with the tank lifted, tracks removed, or motors disconnected.
-
-## Hardware validation
-
-Use `/dev/tty.usbmodem1101` for the currently connected device unless `DEVICE` is overridden:
-
-```sh
-DEVICE=/dev/tty.usbmodem1101 just flash
-DEVICE=/dev/tty.usbmodem1101 just log
-```
-
-Before flashing or sending input signals, make the motor outputs physically safe:
-
-- Disconnect motors, remove tracks, or lift the tank so the tracks cannot move the vehicle.
-- Use a current-limited supply during bring-up.
-- Do not force-flash a board that reports Secure Download Mode with flash encryption enabled.
-- Confirm the flight-controller PWM signal is 3.3 V safe before connecting it to GPIO0 or GPIO1.
-- Start with both inputs at neutral and verify the firmware logs an armed state only after the neutral arming delay.
-- Use the RGB LED as a visual preview of motor direction and relative speed before connecting motors.
-- Verify input loss and invalid pulse widths stop both motors before testing nonzero commands.
-
-Observed stock-board result:
-
-- `just flash` reached esptool but did not write firmware.
-- The board identified as ESP32-C3 in Secure Download Mode with flash
-  encryption enabled.
-- esptool refused the plaintext Zephyr binary to avoid bricking the device.
-- The board still runs stock firmware and exposes MicroPython REPL after Ctrl-C.
-- Hardware bring-up for this milestone is closed as blocked on stock hardware,
-  not as a successful Zephyr deployment to the retail CyberBrick board.
-
-## Software architecture
-
-Expected modules:
-
-```text
-src/main.c
-src/pwm_input.c
-src/motor_output.c
-src/safety.c
-src/status_led.c
-include/pwm_input.h
-include/motor_output.h
-include/safety.h
-include/status_led.h
-boards/
-app.overlay
-prj.conf
-CMakeLists.txt
-```
-
-### `pwm_input`
-
-Responsibilities:
-
-- Configure GPIO inputs for ESC pulse capture.
-- Use GPIO interrupts on rising and falling edges.
-- Measure high pulse width in microseconds.
-- Reject invalid pulses.
-- Publish the latest valid pulse width for each channel.
-- Avoid blocking work inside interrupt handlers.
-
-### `motor_output`
-
-Responsibilities:
-
-- Configure four motor-driver pins.
-- Use Zephyr PWM APIs for motor speed output where practical.
-- Support signed bidirectional motor commands in the normalized range -1000 to +1000.
-- Support per-channel inversion.
-- Support per-channel scaling and limiting.
-- Support coast and brake stop modes.
-- Never leave motor pins floating.
-
-### `safety`
-
-Responsibilities:
-
-- Enforce arming.
-- Enforce failsafe timeout.
-- Enforce neutral-before-arm.
-- Convert pulse widths to signed normalized commands.
-- Clamp commands.
-- Apply deadband.
-- Apply slew-rate limits if enabled.
-
-### `status_led`
-
-Responsibilities:
-
-- Own visual-only RGB LED updates.
-- Derive LED color and intensity from final safe motor commands.
-- Keep LED pin or bus details in devicetree.
-- Avoid changing safety, input, or motor output state.
-
-## Zephyr tooling
-
-Use stock Zephyr tooling first.
-
-Expected tools:
-
-- Local `.zephyr/` West workspace installed by `just install`.
-- Local `.esp-idf/` checkout and `.espressif/` Espressif tools installed by `just install`.
-- `west` in the project `.venv` for workspace management, build, flash, and debug.
-- CMake and Ninja through Zephyr or locally installed Espressif tools.
-- Devicetree overlays for pin assignments.
-- Kconfig for firmware options.
-- Zephyr GPIO API for PWM input edge interrupts.
-- Zephyr PWM API for ESP32-C3 LEDC motor output.
-- macOS firmware build validation with `just build`.
-
-Avoid project-specific build scripts unless they wrap standard Zephyr commands and remain optional.
-
-Example commands:
-
-```sh
-just install
-just build
-just clean
-just flash
-just log
-```
-
-A custom board definition can be added later as `cyberbrick_esc_esp32c3`, but early development may use an existing ESP32-C3 Zephyr board target plus an application overlay.
-
-## Configuration
-
-Initial firmware configuration should be exposed through Kconfig and devicetree rather than hard-coded constants.
-
-Suggested Kconfig options:
-
-```text
-CONFIG_CYBERBRICK_ESC_INPUT_TIMEOUT_MS
-CONFIG_CYBERBRICK_ESC_ARMING_TIME_MS
-CONFIG_CYBERBRICK_ESC_MIN_VALID_US
-CONFIG_CYBERBRICK_ESC_MAX_VALID_US
-CONFIG_CYBERBRICK_ESC_MIN_COMMAND_US
-CONFIG_CYBERBRICK_ESC_NEUTRAL_US
-CONFIG_CYBERBRICK_ESC_MAX_COMMAND_US
-CONFIG_CYBERBRICK_ESC_DEADBAND_US
-CONFIG_CYBERBRICK_ESC_OUTPUT_PWM_HZ
-CONFIG_CYBERBRICK_ESC_STOP_MODE_BRAKE
-CONFIG_CYBERBRICK_ESC_STOP_MODE_COAST
-CONFIG_CYBERBRICK_ESC_MOTOR1_INVERT
-CONFIG_CYBERBRICK_ESC_MOTOR2_INVERT
-CONFIG_CYBERBRICK_ESC_STATUS_LED
-CONFIG_CYBERBRICK_ESC_STATUS_LED_NEUTRAL_BRIGHTNESS
-CONFIG_CYBERBRICK_ESC_STATUS_LED_MIN_ACTIVE_BRIGHTNESS
-CONFIG_CYBERBRICK_ESC_SLEW_LIMIT_ENABLE
-CONFIG_CYBERBRICK_ESC_MIXING_MODE_DIRECT
-CONFIG_CYBERBRICK_ESC_MIXING_MODE_THROTTLE_STEERING
-```
-
-## Development milestones
-
-### Milestone 0: Board bring-up
-
-- Build a minimal Zephyr application for ESP32-C3.
-- Disable conflicting console or logging pins.
-- Confirm safe GPIO startup state.
-- Confirm flashing and recovery workflow.
-- Outcome: macOS build validation succeeded, but stock CyberBrick Zephyr flashing
-  is blocked by Secure Download Mode and flash encryption. Use unlocked hardware
-  or a vendor-compatible update path for further Zephyr bring-up.
-
-### Milestone 1: Motor output only
-
-- Drive Motor 1 and Motor 2 in both directions under controlled test commands.
-- Implement brake and coast stop modes.
-- Validate output polarity with motors unloaded.
-- Validate motor inversion settings.
-
-### Milestone 2: PWM input only
-
-- Capture pulse width on GPIO1 and GPIO0.
-- Print or inspect measured pulse widths through a safe debug path.
-- Validate input timeout behavior.
-- Validate neutral detection.
-
-### Milestone 3: Closed ESC behavior
-
-- Map valid input pulse widths to signed motor commands.
-- Add neutral-before-arm logic.
-- Add failsafe logic.
-- Add command clamping and deadband.
-- Confirm 1000 us reverse, 1500 us stop, and 2000 us forward.
-
-### Milestone 4: Tests and documentation
-
-- Add unit tests for pulse mapping and safety state transitions.
-- Add integration notes for common flight controller configurations.
-- Document measured electrical behavior of servo headers.
-
-## Flight controller setup notes
-
-Configure the flight controller output protocol as normal PWM or servo PWM with center-neutral bidirectional behavior.
-
-Do not use DShot, OneShot, Multishot, or a digital ESC protocol with this firmware. CyberBrick ESC expects timed PWM pulses on GPIO inputs.
-
-For ArduPilot Rover or another rover-capable flight controller, a skid-steer setup can output separate left and right motor commands. In that case, use direct mode: one flight controller output per CyberBrick ESC input.
-
-Confirm that the output signal voltage is safe for 3.3 V ESP32-C3 GPIO.
-
-## License
-
-Pick an open source license before accepting contributions. Recommended options:
-
-- Apache-2.0 if you want alignment with Zephyr's licensing style.
-- MIT if you want a shorter permissive license.
-
-## Disclaimer
-
-CyberBrick ESC is an independent open source firmware project. It is not affiliated with, endorsed by, or supported by Bambu Lab or the CyberBrick product team.
-
-Flashing third-party firmware can make the board unusable without recovery tools. A board with ESP32-C3 Secure Download Mode and flash encryption enabled must not be force-flashed with a plaintext PoC image. Motors can start unexpectedly during firmware development. Test with the vehicle restrained and use a current-limited power source during bring-up.
+- Autonomous rover behavior, navigation, odometry, stabilization, or path
+  planning.
+
+## References
+
+- [MicroPython mpremote](https://docs.micropython.org/en/latest/reference/mpremote.html)
+- [MicroPython reset and boot sequence](https://docs.micropython.org/en/latest/reference/reset_boot.html)
+- [MicroPython NeoPixel](https://docs.micropython.org/en/latest/library/neopixel.html)
+- [MicroPython Pin IRQ](https://docs.micropython.org/en/latest/library/machine.Pin.html)

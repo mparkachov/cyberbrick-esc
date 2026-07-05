@@ -2,34 +2,37 @@
 
 This file defines how coding agents should work on CyberBrick ESC.
 
-The project must stay narrow, safety-first, and Zephyr-native.
+The project must stay narrow and safety-first.
 
-CyberBrick ESC is a proof of concept. It is not intended for production
-deployment, and agents must not describe it as production-ready,
+CyberBrick ESC is a proof of concept. Do not describe it as production-ready,
 safety-certified, or suitable for unattended use.
 
-Current proof-of-concept result:
+## Current development stream
 
-- The Zephyr ESC architecture is technically feasible and builds on macOS.
-- The observed stock CyberBrick ESP32-C3 board remains functional with its stock
-  MicroPython runtime and REPL, so it is not bricked.
-- The observed stock board is not usable for plaintext Zephyr flashing because
-  it reports Secure Download Mode with flash encryption enabled.
-- Do not force-flash plaintext firmware to such a board. Treat it as not
-  Zephyr-flashable unless a maintainer provides an approved signed/encrypted or
-  vendor-compatible update flow.
-- If stock-board experimentation is required, a separate MicroPython PoC can be
-  explored through the existing REPL, but it must not be presented as the
-  Zephyr firmware path in this repository.
+`main` is now the stock-firmware MicroPython PoC stream.
+
+The previous Zephyr implementation is preserved on `origin/backup/zephyr`. It
+is technically feasible and builds on macOS, but the observed stock CyberBrick
+ESP32-C3 board reports Secure Download Mode with flash encryption enabled and is
+not usable for plaintext Zephyr flashing.
+
+Do not force-flash plaintext firmware to such a board. Treat it as not
+Zephyr-flashable unless a maintainer provides an approved signed/encrypted or
+vendor-compatible update flow.
+
+This MicroPython stream must use the existing stock REPL/filesystem. It must not
+be presented as the Zephyr firmware path.
 
 ## Mission
 
-CyberBrick ESC turns CyberBrick Mini Tank hardware into a standard bidirectional dual brushed ESC controlled by normal hobby PWM input signals from a flight controller.
+CyberBrick ESC turns CyberBrick Mini Tank hardware into a standard
+bidirectional dual brushed ESC controlled by normal hobby PWM input signals from
+a flight controller.
 
-The first supported firmware profile is:
+The current MicroPython milestone simulates that ESC behavior visually:
 
 ```text
-Two center-neutral RC PWM inputs -> two bidirectional brushed motor outputs
+Two center-neutral RC PWM inputs -> safe command mapping -> RGB LED feedback
 ```
 
 Default public signal behavior:
@@ -40,28 +43,21 @@ Default public signal behavior:
 2000 us -> full forward
 ```
 
-Do not turn the project into a rover controller, a serial protocol bridge, a CyberBrick clone, or a general robotics stack.
-
-## Development stream policy
-
-When this project says forward-only development, it means the development stream moves forward through one Zephyr-native architecture. It does not mean forward-only motor control.
-
-Agents must:
-
-- Build on the current Zephyr-based design.
-- Prefer stock Zephyr APIs and tools.
-- Avoid parallel framework implementations.
-- Avoid compatibility layers for old internal prototypes unless a maintainer explicitly asks for them.
-- Keep the firmware behavior centered on standard ESC semantics.
-
-Motors are bidirectional in the default firmware profile.
+Do not turn the project into a rover controller, a serial protocol bridge, a
+CyberBrick clone, or a general robotics stack.
 
 ## Hard scope boundaries
 
-Implement only the bidirectional center-neutral PWM ESC profile unless a human maintainer explicitly changes scope.
+Implement only the stock MicroPython visual ESC simulator unless a human
+maintainer explicitly changes scope.
+
+The current milestone must not drive real motor outputs. GPIO4-GPIO7 are
+reserved for later H-bridge work and must remain unused by the MicroPython app.
 
 Do not implement these features by default:
 
+- Plaintext firmware flashing to locked stock boards.
+- Real motor output from the MicroPython simulator.
 - MAVLink.
 - MSP.
 - CRSF.
@@ -79,46 +75,40 @@ Do not implement these features by default:
 - Autonomous rover behavior.
 - Navigation, odometry, stabilization, or path planning.
 
-Optional direct two-channel ESC behavior is in scope. Optional throttle/steering mixing may be added only as a configuration feature and must not turn the firmware into a rover controller.
-
-It is acceptable to structure code so future protocols can be added, but do not add those protocols now.
+It is acceptable to structure code so future protocols or real motor output can
+be added later, but do not add those features now.
 
 ## Tooling policy
 
-Use stock Zephyr tooling and APIs as much as possible.
+Use stock MicroPython tooling against the existing REPL/filesystem.
 
 Preferred tools and mechanisms:
 
-- `west build` for building.
-- `west flash` for flashing.
-- `west debug`, `west debugserver`, or `west attach` if debugging is needed.
-- CMake through Zephyr's build system.
-- Ninja through Zephyr's build system.
-- Zephyr devicetree overlays for pin selection.
-- Zephyr Kconfig for build-time options.
-- Zephyr GPIO API for input capture edge interrupts.
-- Zephyr PWM API for motor PWM output.
-- Firmware validation through `just build` on macOS at this stage.
+- `mpremote` for REPL, filesystem copy, reset, backup, and restore.
+- A host-side serial Ctrl-C preflight before filesystem operations, because the
+  stock CyberBrick app may be running and mpremote cannot enter raw REPL until
+  the app is interrupted.
+- `just` as the thin project command runner.
+- `python3 -m unittest` for host checks of pure logic.
+- Persistent app deployment by copying `main.py` and library files to the
+  MicroPython filesystem.
 
 Avoid:
 
+- `esptool` writes or force-flashing.
+- `west flash` or any Zephyr flashing flow on stock locked boards.
 - Arduino framework.
 - PlatformIO project structure.
 - ESP-IDF application structure.
-- MicroPython.
-- Custom Makefiles that bypass Zephyr.
-- Vendor-specific firmware assumptions from CyberBrick stock code.
-- External dependencies unless they are clearly justified and approved.
-- Force-flashing plaintext firmware to ESP32-C3 boards that report Secure
-  Download Mode with flash encryption enabled.
-
-ESP-IDF headers or HAL behavior may be referenced only when Zephyr's ESP32-C3 port requires it internally. Application code should prefer Zephyr APIs.
+- MicroPython firmware replacement.
+- External dependencies beyond `mpremote` unless clearly justified and approved.
 
 ## Hardware contract
 
 Known target hardware:
 
 - MCU: ESP32-C3 on CyberBrick Multi-Function Core Board.
+- Runtime: stock CyberBrick MicroPython firmware with REPL access.
 - Motor board: CyberBrick receiver and motor-driver board from the Mini Tank.
 - Motor driver: dual brushed H-bridge interface, two logic inputs per motor.
 
@@ -129,7 +119,13 @@ Default input pins:
 | ESC input 1 | Servo S3 signal | GPIO1 |
 | ESC input 2 | Servo S4 signal | GPIO0 |
 
-Default motor pins:
+Default status LED:
+
+| Function | GPIO |
+| --- | ---: |
+| Onboard RGB LED WS2812/NeoPixel | GPIO8 |
+
+Reserved motor pins:
 
 | Function | GPIO |
 | --- | ---: |
@@ -138,48 +134,15 @@ Default motor pins:
 | Motor 2 input A | GPIO6 |
 | Motor 2 input B | GPIO7 |
 
-Avoid using these pins in normal development:
+Avoid using these pins in normal MicroPython development:
 
 - GPIO2, because it is an ESP32-C3 strapping pin.
-- GPIO4 to GPIO7 for anything except motor output.
+- GPIO4 to GPIO7, because they are reserved for later motor output work.
 - GPIO18 and GPIO19, because they are USB pins.
-- GPIO20 and GPIO21 for ESC input, because they may be tied to debug, UART, LED, or buzzer functions on CyberBrick-related hardware.
+- GPIO20 and GPIO21 for ESC input, because they may be tied to debug, UART,
+  LED, or buzzer functions on CyberBrick-related hardware.
 
-Keep pin assignments in devicetree overlays. Do not hard-code board pins in business logic.
-
-## Bidirectional motor rule
-
-The firmware must implement standard center-neutral bidirectional ESC behavior in the default profile.
-
-For each motor:
-
-- Positive command means forward.
-- Negative command means reverse.
-- Zero command means stop.
-- Stop mode is configurable as coast or brake.
-- Forward is generated by applying PWM to the configured forward H-bridge input and holding the opposite input low.
-- Reverse is generated by applying PWM to the configured reverse H-bridge input and holding the opposite input low.
-- Brake stop is generated by setting both H-bridge inputs high.
-- Coast stop is generated by setting both H-bridge inputs low.
-
-Allowed configuration:
-
-- Per-motor inversion.
-- Physical mapping of ESC channel to motor output.
-- Per-motor maximum forward scaling.
-- Per-motor maximum reverse scaling.
-- Per-motor slew-rate limiting.
-- Coast or brake stop behavior.
-
-Required command range inside firmware:
-
-```text
--1000 -> full reverse
-0     -> stop
-+1000 -> full forward
-```
-
-Motor inversion must only affect physical output polarity. It must not change the documented public input convention.
+Keep hardware pin assignments centralized in `micropython/lib/cyberbrick_esc/config.py`.
 
 ## Input signal rule
 
@@ -204,92 +167,68 @@ Default mapping:
 2000 us -> +1000
 ```
 
-Use a configurable neutral deadband around 1500 us. The default deadband should be 25 us to 50 us.
+Use a neutral deadband around 1500 us. The default deadband is 50 us.
 
-Use GPIO interrupts on both rising and falling edges. Interrupt handlers must be short and non-blocking.
+Use GPIO interrupts on both rising and falling edges. Interrupt handlers must be
+short and non-blocking.
 
 Do not implement input decoding by busy-waiting in the main loop.
 
-## Channel mapping rule
-
-Default mode is direct dual ESC mode:
-
-```text
-Input 1 -> ESC channel 1 -> Motor 1
-Input 2 -> ESC channel 2 -> Motor 2
-```
-
-This is suitable when the flight controller already performs rover, skid-steer, or differential-drive mixing.
-
-Optional throttle/steering mixing may be implemented behind a Kconfig option:
-
-```text
-Input 1 -> throttle
-Input 2 -> steering
-left  = throttle + steering
-right = throttle - steering
-```
-
-The mixed result must be clamped to -1000 to +1000. Mixing code must be isolated from the motor output driver.
-
 ## Visual feedback rule
 
-The onboard RGB LED is proof-of-concept visual feedback for testing motor
-behavior while motors are disconnected or the vehicle is physically safe.
+The onboard RGB LED is proof-of-concept visual feedback for testing while
+motors are disconnected or the vehicle is physically safe.
 
 Default LED behavior:
 
-- Blue means powered and neutral, so motors should not move. This is the boot
-  state.
-- Green means the dominant final motor command is forward. Intensity reflects
-  the largest forward command magnitude.
-- Red means the dominant final motor command is reverse. Intensity reflects the
+- Blue means powered and neutral, so motors should not move.
+- Green means the dominant final command is forward. Intensity reflects the
+  largest forward command magnitude.
+- Red means the dominant final command is reverse. Intensity reflects the
   largest reverse command magnitude.
-- If channels disagree, use deterministic behavior documented in README. The
-  current rule is dominant absolute command wins; an exact tie returns to blue.
+- If channels disagree, dominant absolute command wins; an exact opposing tie
+  returns to blue.
 
-The LED must be derived from final safe motor commands after safety processing.
-It must not affect arming, failsafe, input capture, or motor output commands.
+The LED must be derived from final safe commands after safety processing. It
+must not affect arming, failsafe, input capture, or any future motor output
+commands.
 
 ## Safety invariants
 
-These rules are mandatory and should be protected by tests where practical.
+These rules are mandatory and should be protected by host tests where practical.
 
-- On boot, all motor outputs are safe before input capture starts.
-- On initialization failure, motors remain safe.
-- On missing input, motors stop after the failsafe timeout.
+- On boot, simulated output commands are zero before input capture starts.
+- On initialization failure, the app must not command motor pins.
+- On missing input, final commands return to zero after the failsafe timeout.
 - On invalid pulse width, the pulse is ignored.
 - On failsafe recovery, input must be valid and neutral before arming again.
 - On startup, input must be valid and neutral before first arming.
-- No ISR directly changes motor PWM duty cycle.
-- No malformed input can command nonzero motor output.
-- No Kconfig default should allow unexpected movement at boot.
-- Motor inversion must not bypass arming, deadband, failsafe, or clamping.
+- No IRQ directly changes LED feedback or any future motor output.
+- No malformed input can produce nonzero final commands.
+- No default should allow unexpected movement at boot.
 
 ## Architecture expectations
 
 Keep the application modular.
 
-Preferred layout:
+Expected layout:
 
 ```text
-CMakeLists.txt
-Kconfig
-prj.conf
-app.overlay
-boards/
-include/
-  cyberbrick_esc/
-    motor_output.h
-    pwm_input.h
-    safety.h
-    status_led.h
-src/
-  main.c
-  motor_output.c
-  pwm_input.c
-  safety.c
-  status_led.c
+justfile
+requirements.txt
+micropython/
+  main.py
+  examples/
+    blink_main.py
+  lib/
+    cyberbrick_esc/
+      app.py
+      config.py
+      led.py
+      pwm_input.py
+      safety.py
+tests/
+  test_safety.py
 README.md
 AGENTS.md
 ```
@@ -300,17 +239,9 @@ Module responsibilities:
 
 - Owns GPIO configuration and callbacks.
 - Measures pulse widths.
-- Converts raw edge timing into validated pulse-width samples.
+- Publishes validated pulse-width samples.
 - Does not know about motor pins.
 - Does not know about arming policy.
-
-### `motor_output`
-
-- Owns motor PWM devices and H-bridge pins.
-- Accepts signed normalized commands in the range -1000 to +1000.
-- Generates forward, reverse, brake, and coast output states.
-- Does not know about RC input pulse widths.
-- Does not implement arming policy.
 
 ### `safety`
 
@@ -319,118 +250,94 @@ Module responsibilities:
 - Applies neutral deadband.
 - Applies clamping.
 - Applies neutral-before-arm rules.
-- Provides safe commands to `motor_output`.
+- Provides final safe commands for LED feedback.
 
-### `status_led`
+### `led`
 
 - Owns visual-only RGB LED updates.
-- Derives LED color and intensity from final safe motor commands.
-- Keeps LED pin, bus, or PWM details in devicetree/Kconfig.
-- Does not change safety, input, or motor output state.
+- Derives LED color and intensity from final safe commands.
+- Does not change safety, input capture, or future motor output state.
 
-### `main`
+### `app`
 
 - Initializes modules.
 - Runs the control loop.
-- Applies safe outputs at a fixed rate.
-- Contains no board-specific pin numbers.
+- Contains no hardware pin numbers outside config.
 
 ## Coding style
 
-Follow Zephyr style and normal embedded C practices.
+Follow normal embedded MicroPython practices.
 
 - Use clear, small functions.
-- Prefer integer arithmetic for timing and duty calculations.
-- Avoid floating point unless there is a strong reason.
-- Keep ISRs short.
-- Avoid dynamic allocation.
-- Use `static` for file-local functions and state.
-- Use Zephyr logging only if it does not conflict with input pins or timing.
-- Use Kconfig defaults that are safe.
-- Keep public headers minimal.
-- Document units in names, for example `_us`, `_ms`, `_hz`, `_permille`.
-
-## Devicetree and Kconfig rules
-
-Use devicetree for hardware description:
-
-- PWM input GPIOs.
-- Motor output PWM channels.
-- Optional status LED only if it does not conflict with the board.
-
-Use Kconfig for behavior:
-
-- Failsafe timeout.
-- Arming time.
-- Valid pulse range.
-- Minimum, neutral, and maximum command pulse widths.
-- Neutral deadband.
-- Output PWM frequency.
-- Stop mode.
-- Motor inversion.
-- Motor output scaling.
-- Slew-rate limiting.
-- Optional mixing mode.
-
-Do not mix hardware pin constants into generic modules.
+- Prefer integer arithmetic for timing and command calculations.
+- Avoid dynamic allocation in IRQ handlers.
+- Keep IRQ handlers short.
+- Avoid unnecessary global mutable state.
+- Keep target-specific imports (`machine`, `neopixel`) out of pure host-testable
+  modules when practical.
+- Keep public module surfaces minimal.
+- Document units in names, for example `_us`, `_ms`, `_hz`.
 
 ## Testing requirements
 
-Twister and Ztest tests are not required for this proof-of-concept stage.
-Do not add Twister metadata, `testcase.yaml`, or Ztest scaffolding unless a
-human maintainer explicitly asks for it.
-
-The required validation gate for now is that the firmware builds on macOS with:
+The required host validation gate for now is:
 
 ```sh
-just build
+just test
 ```
 
-Small standalone host checks for pure C logic are acceptable when useful, but
-they must remain optional and must not become a parallel firmware framework.
-Hardware-specific GPIO and motor behavior can be verified manually during
-bring-up.
+Hardware validation remains manual:
+
+```sh
+just install
+just mp-list
+just mp-backup
+just deploy-blink
+just mp-stop
+just deploy
+```
+
+Do not add Twister metadata, `testcase.yaml`, or Ztest scaffolding for this
+MicroPython milestone.
 
 ## Definition of done
 
 A change is not complete unless:
 
-- It builds with stock Zephyr commands.
-- It does not introduce non-Zephyr build tooling.
-- It preserves bidirectional center-neutral ESC behavior.
+- It keeps stock-board work on the MicroPython REPL/filesystem path.
+- It does not introduce firmware flashing for locked stock boards.
+- It preserves center-neutral ESC simulator behavior.
 - It preserves safe boot and failsafe behavior.
-- It keeps pin assignments in devicetree.
+- It keeps GPIO4-GPIO7 unused unless a maintainer explicitly approves real
+  motor output work.
 - It updates README documentation when user-visible behavior changes.
-- It remains buildable on macOS with the project `just` workflow.
-
-Preferred validation commands:
-
-```sh
-just build
-```
-
-If a custom board is added later, also validate that board target.
+- `just test` passes, or the reason it could not be run is documented.
 
 ## Documentation expectations
-
-When adding functionality, update documentation in the same change.
 
 Documentation should be explicit about:
 
 - Required wiring.
-- Signal voltage limits.
+- 3.3 V signal limits.
 - PWM timing expectations.
 - Center-neutral behavior.
 - Failsafe behavior.
 - Which pins are used.
+- Which pins are intentionally reserved and unused.
 - Which features are intentionally unsupported.
+- Backup, deploy, stop, and restore workflows.
 
-Do not describe this project as a complete BLHeli, DShot, or universal ESC replacement.
+Do not describe this project as a complete BLHeli, DShot, or universal ESC
+replacement.
 
 ## When uncertain
 
 Choose the safer and narrower behavior.
 
-If hardware behavior is unknown, document the uncertainty and require measurement. Do not make assumptions that could put 5 V on an ESP32-C3 GPIO or start a motor unexpectedly.
+If hardware behavior is unknown, document the uncertainty and require
+measurement. Do not make assumptions that could put 5 V on an ESP32-C3 GPIO or
+start a motor unexpectedly.
 
-If a requested change expands scope, implement the smallest preparatory refactor only if it improves the current Zephyr-native bidirectional PWM ESC design. Otherwise, leave it for a future scope decision.
+If a requested change expands scope, implement the smallest preparatory refactor
+only if it improves the current stock MicroPython visual ESC simulator. Otherwise
+leave it for a future scope decision.
