@@ -1,0 +1,88 @@
+---
+id: TASK-2.9
+title: Stock-Tool ESC Simulator Deployment
+status: Done
+assignee: []
+created_date: '2026-07-06 00:00'
+updated_date: '2026-07-06 00:00'
+labels:
+  - micropython
+  - deployment
+  - hardware
+dependencies:
+  - TASK-2.8
+modified_files:
+  - justfile
+  - README.md
+  - AGENTS.md
+  - micropython/examples/esc_boot.py
+  - micropython/main.py
+  - micropython/lib/cyberbrick_esc/app.py
+  - micropython/lib/cyberbrick_esc/config.py
+  - micropython/lib/cyberbrick_esc/safety.py
+  - micropython/lib/cyberbrick_esc/led.py
+  - tests/test_safety.py
+  - tests/test_led.py
+  - tests/test_app_skeleton.py
+  - micropython/lib/cyberbrick_esc/
+parent_task_id: TASK-2
+milestone: m-1
+priority: high
+ordinal: 10900
+---
+
+## Description
+
+<!-- SECTION:DESCRIPTION:BEGIN -->
+Deploy the visual ESC simulator through the validated stock-tool MicroPython
+workflow.
+<!-- SECTION:DESCRIPTION:END -->
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [x] #1 `just deploy` uses only `uv run mpremote ... resume` filesystem commands and preserves remote `boot.py` as `boot.stock.py`.
+- [x] #2 The deploy recipe installs the simulator boot override, `main.py`, and `micropython/lib/cyberbrick_esc/` modules without custom serial helpers.
+- [x] #3 `just restore-stock` removes deployed simulator files and returns stock `boot.py`.
+- [x] #4 Host tests and MicroPython syntax checks pass through `just test`.
+- [x] #5 Simulator prints miniterm diagnostics for captured channel pulse widths, freshness, safety state, final commands, and LED RGB.
+- [x] #6 Arming tolerates brief non-neutral capture glitches while keeping final commands zero until arming completes.
+- [x] #7 Armed state tolerates brief stale-input glitches by outputting zero without latching disarm unless loss persists.
+- [x] #8 Agent guidance states that final safe commands, not LED smoothness, are the stability target for future motor output.
+- [x] #9 Hardware validation confirms the persistent simulator starts after reset/power-cycle and LED feedback follows final safe commands.
+<!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+The observed stock `boot.py` runs the vendor app directly, so simulator
+deployment installs `micropython/examples/esc_boot.py` as remote `boot.py` and
+keeps the real app entrypoint in remote `main.py`. GPIO4-GPIO7 remain unused.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Hardware validation is complete for the visual simulator PoC. `just deploy`
+backs up the board filesystem, preserves stock `boot.py`, creates the simulator
+package directory, copies `esc_boot.py`, `main.py`, and the simulator library,
+then resets through stock `mpremote resume reset`. `just restore-stock` restores
+`boot.stock.py`, removes deployed simulator files, and resets the board. The app
+prints 500 ms diagnostics showing captured PWM widths, freshness, pre-safety raw
+mapped commands, arming/failsafe reason, hard-fault detail, final commands, and
+LED RGB.
+
+Latest hardware evidence confirms the persistent simulator starts, arms from
+neutral, holds `cmd=1000,0` for forward, `cmd=-1000,0` for reverse, and
+`cmd=1000,-1000` for opposing endpoint tie. LED feedback follows those final
+commands: green, red, and blue respectively. When PWM stops, stale input
+immediately outputs `cmd=0,0` and later reports `latch=input_loss` after the
+1500 ms latch window.
+
+Raw input captures still show occasional valid-width excursions, so the input
+path applies a three-sample PWM median filter, and the command path applies a
+50 us neutral deadband, 150 us endpoint deadband, endpoint/neutral command
+snapping, and 80 ms command-change confirmation. These filters are part of the
+final command stream rather than LED-only smoothing. Agent guidance makes final
+safe commands the stability target for future motor output and keeps LED
+feedback as downstream debug only.
+<!-- SECTION:FINAL_SUMMARY:END -->

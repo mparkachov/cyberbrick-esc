@@ -18,17 +18,21 @@ Do not force-flash plaintext firmware to such a board. Treat it as not
 Zephyr-flashable unless a maintainer provides an approved signed/encrypted or
 vendor-compatible update flow.
 
-The active phase is a stock-tool workflow reset. First make stock REPL access,
-RAM blink, persistent boot blink, and restore-to-stock reliable. Do not resume
-ESC simulator deployment until that Phase 1 workflow is validated.
+The active phase is stock-tool ESC simulator deployment on top of the validated
+Phase 1 workflow. Keep the board workflow on `uv`, stock `mpremote`, manual
+miniterm recovery when needed, and restore-to-stock through `boot.stock.py`.
 
 ## Mission And Scope
 
-The long-term mission is a center-neutral dual brushed ESC simulator path:
+The long-term mission is a center-neutral dual brushed ESC path:
 
 ```text
-Two center-neutral RC PWM inputs -> safe command mapping -> RGB LED feedback
+Two center-neutral RC PWM inputs -> safe command mapping -> final safe commands
 ```
+
+Future motor output must be driven from the final safe commands. The current
+visual PoC taps those final safe commands into the RGB LED only as debug
+feedback.
 
 Default future simulator signal behavior:
 
@@ -38,8 +42,37 @@ Default future simulator signal behavior:
 2000 us -> full forward
 ```
 
-For Phase 1, active hardware work is limited to stock-tool blink and restore.
-Keep `micropython/lib/cyberbrick_esc/` and host tests dormant for Phase 2.
+The active MicroPython path uses a 50 us neutral deadband, 150 us endpoint
+deadband, three-sample PWM median filter, and 80 ms command-change
+confirmation. These are part of the final command stream, not LED display
+workarounds.
+
+Active hardware work is still visual-only: stock-tool blink/restore and the
+MicroPython ESC simulator. The simulator reads inputs and drives only the RGB
+LED feedback path.
+
+## Output Priority
+
+The final safe command stream is the behavioral contract. Design and validation
+must prioritize commands that are stable enough for future motor output and that
+faithfully reflect valid RC PWM inputs after safety processing.
+
+The RGB LED is debug feedback only. LED appearance, flicker, smoothness, or
+brightness stability must not drive changes to input capture, safety mapping,
+arming, failsafe, or future motor-output behavior. If LED output looks unstable
+but diagnostics show the final safe commands are changing, preserve command
+fidelity and investigate the input/safety path rather than hiding it in the LED.
+
+LED code may format or display final safe commands, but it must remain
+downstream-only:
+
+- Do not feed LED state back into safety, input capture, or command generation.
+- Do not change command semantics to make LED colors look steadier.
+- Do not use LED stability as evidence that future motor output would be
+  stable; validate final safe commands directly through logs/tests and later
+  hardware measurements.
+- Any smoothing or filtering intended for motor output must be explicit in the
+  command/output path, documented as such, and protected by tests.
 
 Do not implement these features by default:
 
@@ -63,7 +96,7 @@ Required tooling:
 - `just` may exist only as thin aliases over `uv run ...`.
 - `uv run python -m unittest discover -s tests` is the host test command.
 
-Allowed Phase 1 commands:
+Allowed board commands:
 
 - `uv sync`
 - `uv run mpremote connect list`
@@ -72,6 +105,8 @@ Allowed Phase 1 commands:
 - `uv run mpremote connect <device> resume fs ...`
 - `uv run python -m serial.tools.miniterm --raw --dtr 0 --rts 0 <device> 115200`
 - `DEVICE=<device> just miniterm`
+- `just deploy`
+- `just restore-stock`
 
 Avoid:
 
@@ -125,6 +160,7 @@ micropython/
   examples/
     blink_boot.py
     blink_main.py
+    esc_boot.py
   lib/
     cyberbrick_esc/
 tests/
@@ -132,8 +168,8 @@ README.md
 AGENTS.md
 ```
 
-Phase 1 uses only the blink examples for hardware deployment. The simulator
-modules remain modular and host-tested for later work:
+The blink examples remain the first hardware proof. The simulator modules are
+deployed by `just deploy` and remain modular:
 
 - `pwm_input` owns GPIO input capture.
 - `safety` owns arming, failsafe, and command mapping.
@@ -151,12 +187,13 @@ just test
 just --list
 ```
 
-Manual hardware validation for Phase 1:
+Manual hardware validation:
 
 ```sh
 uv run mpremote connect list
 just run-blink
 just deploy-blink
+just deploy
 just restore-stock
 ```
 
@@ -173,6 +210,7 @@ Documentation must be explicit about:
 - Manual REPL recovery from stock solid green.
 - `uv` and stock `mpremote` as the supported workflow.
 - RAM blink, persistent blink, and restore stock.
+- ESC simulator deploy and visual RGB command behavior.
 - 3.3 V signal limits and reserved motor pins.
 - Which features are intentionally unsupported.
 

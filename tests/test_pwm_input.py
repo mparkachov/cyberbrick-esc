@@ -109,6 +109,46 @@ class PwmInputCaptureTest(unittest.TestCase):
         self.assertEqual(sample_after_invalid.timestamp_us, 2500)
         self.assertTrue(sample_after_invalid.valid)
 
+    def test_median_filter_rejects_isolated_valid_width_spike(self):
+        inputs = pwm_input.PwmInput()
+        pin = FakePin.instances[0]
+
+        self.trigger_edge(pin, 1, 1000)
+        self.trigger_edge(pin, 0, 2500)
+        self.trigger_edge(pin, 1, 21000)
+        self.trigger_edge(pin, 0, 22510)
+        self.trigger_edge(pin, 1, 41000)
+        self.trigger_edge(pin, 0, 42490)
+
+        stable_sample = inputs.samples()[0]
+        self.assertEqual(stable_sample.pulse_width_us, 1500)
+
+        self.trigger_edge(pin, 1, 61000)
+        self.trigger_edge(pin, 0, 62000)
+
+        filtered_sample = inputs.samples()[0]
+        self.assertEqual(filtered_sample.pulse_width_us, 1490)
+        self.assertEqual(filtered_sample.timestamp_us, 62000)
+        self.assertTrue(filtered_sample.valid)
+
+    def test_median_filter_accepts_persistent_width_change(self):
+        inputs = pwm_input.PwmInput()
+        pin = FakePin.instances[0]
+
+        self.trigger_edge(pin, 1, 1000)
+        self.trigger_edge(pin, 0, 2500)
+        self.trigger_edge(pin, 1, 21000)
+        self.trigger_edge(pin, 0, 22500)
+        self.trigger_edge(pin, 1, 41000)
+        self.trigger_edge(pin, 0, 42500)
+        self.trigger_edge(pin, 1, 61000)
+        self.trigger_edge(pin, 0, 63000)
+        self.trigger_edge(pin, 1, 81000)
+        self.trigger_edge(pin, 0, 83000)
+
+        changed_sample = inputs.samples()[0]
+        self.assertEqual(changed_sample.pulse_width_us, 2000)
+
     def test_falling_edge_without_rising_edge_is_ignored(self):
         inputs = pwm_input.PwmInput()
         self.trigger_edge(FakePin.instances[0], 0, 2500)

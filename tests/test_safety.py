@@ -7,11 +7,19 @@ from cyberbrick_esc.led import (
     DIRECTION_REVERSE,
     state_from_commands,
 )
-from cyberbrick_esc.safety import Safety, map_pulse_us
+from cyberbrick_esc.safety import Safety, map_pulse_us, normalize_command
 
 
 def sample(width_us, timestamp_us=0, valid=True):
     return (width_us, timestamp_us, valid)
+
+
+def confirmed_update(safety, samples, now_us):
+    safety.update(samples, now_us)
+    return safety.update(
+        samples,
+        now_us + config.COMMAND_CHANGE_CONFIRM_MS * 1000,
+    )
 
 
 class ObjectSample:
@@ -30,6 +38,25 @@ class SafetyMappingTest(unittest.TestCase):
     def test_deadband_maps_to_neutral(self):
         self.assertEqual(map_pulse_us(config.NEUTRAL_US - config.DEADBAND_US), 0)
         self.assertEqual(map_pulse_us(config.NEUTRAL_US + config.DEADBAND_US), 0)
+
+    def test_endpoint_deadband_maps_to_full_command(self):
+        self.assertEqual(
+            map_pulse_us(config.MIN_COMMAND_US + config.ENDPOINT_DEADBAND_US),
+            config.COMMAND_MIN,
+        )
+        self.assertEqual(
+            map_pulse_us(config.MAX_COMMAND_US - config.ENDPOINT_DEADBAND_US),
+            config.COMMAND_MAX,
+        )
+        self.assertEqual(map_pulse_us(1300), -500)
+        self.assertEqual(map_pulse_us(1700), 500)
+
+    def test_command_normalization_snaps_small_and_endpoint_commands(self):
+        self.assertEqual(normalize_command(50), 0)
+        self.assertEqual(normalize_command(-50), 0)
+        self.assertEqual(normalize_command(900), 1000)
+        self.assertEqual(normalize_command(-900), -1000)
+        self.assertEqual(normalize_command(500), 500)
 
     def test_invalid_pulse_rejected(self):
         with self.assertRaises(ValueError):
@@ -58,10 +85,55 @@ class SafetyMappingTest(unittest.TestCase):
             sample(1750, armed_at_us + 1000),
             sample(1500, armed_at_us + 1000),
         )
-        output = safety.update(forward, armed_at_us + 1000)
+        output = confirmed_update(safety, forward, armed_at_us + 1000)
         self.assertTrue(output.armed)
         self.assertGreater(output.commands[0], 0)
         self.assertEqual(output.commands[1], 0)
+
+    def test_command_change_requires_confirmation(self):
+        safety = Safety()
+        armed_at_us = config.ARMING_TIME_MS * 1000
+        safety.update((sample(1500, 0), sample(1500, 0)), 0)
+        safety.update((sample(1500, armed_at_us), sample(1500, armed_at_us)), armed_at_us)
+
+        command_at_us = armed_at_us + 1000
+        output = safety.update((sample(2000, command_at_us), sample(1500, command_at_us)), command_at_us)
+        self.assertTrue(output.armed)
+        self.assertEqual(output.commands, [0, 0])
+
+        output = safety.update(
+            (sample(2000, command_at_us), sample(1500, command_at_us)),
+            command_at_us + config.COMMAND_CHANGE_CONFIRM_MS * 1000,
+        )
+        self.assertEqual(output.commands, [1000, 0])
+
+    def test_short_command_spike_is_rejected(self):
+        safety = Safety()
+        armed_at_us = config.ARMING_TIME_MS * 1000
+        safety.update((sample(1500, 0), sample(1500, 0)), 0)
+        safety.update((sample(1500, armed_at_us), sample(1500, armed_at_us)), armed_at_us)
+
+        forward_at_us = armed_at_us + 1000
+        output = confirmed_update(
+            safety,
+            (sample(2000, forward_at_us), sample(1500, forward_at_us)),
+            forward_at_us,
+        )
+        self.assertEqual(output.commands, [1000, 0])
+
+        spike_at_us = forward_at_us + config.COMMAND_CHANGE_CONFIRM_MS * 1000 + 1000
+        output = safety.update(
+            (sample(1000, spike_at_us), sample(1500, spike_at_us)),
+            spike_at_us,
+        )
+        self.assertEqual(output.commands, [1000, 0])
+
+        recovered_at_us = spike_at_us + 20_000
+        output = safety.update(
+            (sample(2000, recovered_at_us), sample(1500, recovered_at_us)),
+            recovered_at_us,
+        )
+        self.assertEqual(output.commands, [1000, 0])
 
     def test_startup_requires_valid_neutral_hold_before_arming(self):
         safety = Safety()
@@ -95,6 +167,66 @@ class SafetyMappingTest(unittest.TestCase):
         self.assertTrue(output.armed)
         self.assertEqual(output.commands, [0, 0])
 
+    def test_brief_non_neutral_glitch_does_not_restart_neutral_arming(self):
+        safety = Safety()
+        arming_time_us = config.ARMING_TIME_MS * 1000
+        glitch_at_us = arming_time_us // 2
+        grace_recovered_us = glitch_at_us + (config.ARMING_NON_NEUTRAL_GRACE_MS * 1000) // 2
+
+        safety.update((sample(1500, 0), sample(1500, 0)), 0)
+        output = safety.update(
+            (sample(1600, glitch_at_us), sample(1500, glitch_at_us)),
+            glitch_at_us,
+        )
+        self.assertFalse(output.armed)
+        self.assertEqual(output.commands, [0, 0])
+
+        output = safety.update(
+            (sample(1500, grace_recovered_us), sample(1500, grace_recovered_us)),
+            grace_recovered_us,
+        )
+        self.assertFalse(output.armed)
+        self.assertTrue(safety.neutral_pending)
+
+        output = safety.update(
+            (sample(1500, arming_time_us), sample(1500, arming_time_us)),
+            arming_time_us,
+        )
+        self.assertTrue(output.armed)
+        self.assertEqual(output.commands, [0, 0])
+
+    def test_persistent_non_neutral_before_arm_restarts_neutral_arming(self):
+        safety = Safety()
+        arming_time_us = config.ARMING_TIME_MS * 1000
+        glitch_at_us = arming_time_us // 2
+        persistent_at_us = glitch_at_us + config.ARMING_NON_NEUTRAL_GRACE_MS * 1000 + 1
+
+        safety.update((sample(1500, 0), sample(1500, 0)), 0)
+        safety.update((sample(1600, glitch_at_us), sample(1500, glitch_at_us)), glitch_at_us)
+        output = safety.update(
+            (sample(1600, persistent_at_us), sample(1500, persistent_at_us)),
+            persistent_at_us,
+        )
+        self.assertFalse(output.armed)
+        self.assertFalse(safety.neutral_pending)
+
+        output = safety.update(
+            (sample(1500, arming_time_us), sample(1500, arming_time_us)),
+            arming_time_us,
+        )
+        self.assertFalse(output.armed)
+        self.assertEqual(output.commands, [0, 0])
+
+        output = safety.update(
+            (
+                sample(1500, arming_time_us * 2),
+                sample(1500, arming_time_us * 2),
+            ),
+            arming_time_us * 2,
+        )
+        self.assertTrue(output.armed)
+        self.assertEqual(output.commands, [0, 0])
+
     def test_failsafe_requires_neutral_recovery(self):
         safety = Safety()
         neutral = (sample(1500, 0), sample(1500, 0))
@@ -103,6 +235,12 @@ class SafetyMappingTest(unittest.TestCase):
         safety.update((sample(1500, armed_at_us), sample(1500, armed_at_us)), armed_at_us)
 
         stale_now = armed_at_us + config.INPUT_TIMEOUT_MS * 1000 + 1
+        output = safety.update(neutral, stale_now)
+        self.assertTrue(output.armed)
+        self.assertTrue(output.failsafe)
+        self.assertEqual(output.commands, [0, 0])
+
+        stale_now = stale_now + config.INPUT_LOSS_LATCH_MS * 1000 + 1
         output = safety.update(neutral, stale_now)
         self.assertFalse(output.armed)
         self.assertTrue(output.failsafe)
@@ -123,6 +261,80 @@ class SafetyMappingTest(unittest.TestCase):
         )
         self.assertTrue(output.armed)
         self.assertFalse(output.failsafe)
+        self.assertEqual(output.commands, [0, 0])
+
+    def test_short_input_loss_outputs_zero_without_latching_disarm(self):
+        safety = Safety()
+        armed_at_us = config.ARMING_TIME_MS * 1000
+        safety.update((sample(1500, 0), sample(1500, 0)), 0)
+        safety.update((sample(1500, armed_at_us), sample(1500, armed_at_us)), armed_at_us)
+
+        commanded_at_us = armed_at_us + 1000
+        output = confirmed_update(
+            safety,
+            (sample(2000, commanded_at_us), sample(1500, commanded_at_us)),
+            commanded_at_us,
+        )
+        self.assertTrue(output.armed)
+        self.assertEqual(output.commands, [1000, 0])
+
+        stale_at_us = commanded_at_us + config.INPUT_TIMEOUT_MS * 1000 + 1
+        output = safety.update(
+            (sample(2000, commanded_at_us), sample(1500, commanded_at_us)),
+            stale_at_us,
+        )
+        self.assertTrue(output.armed)
+        self.assertTrue(output.failsafe)
+        self.assertEqual(output.commands, [0, 0])
+
+        recovered_at_us = stale_at_us + (config.INPUT_LOSS_LATCH_MS * 1000) // 2
+        output = confirmed_update(
+            safety,
+            (sample(2000, recovered_at_us), sample(1500, recovered_at_us)),
+            recovered_at_us,
+        )
+        self.assertTrue(output.armed)
+        self.assertFalse(output.failsafe)
+        self.assertEqual(output.commands, [1000, 0])
+        self.assertEqual(safety.last_latch_reason, "")
+
+    def test_persistent_input_loss_latches_disarm(self):
+        safety = Safety()
+        armed_at_us = config.ARMING_TIME_MS * 1000
+        safety.update((sample(1500, 0), sample(1500, 0)), 0)
+        safety.update((sample(1500, armed_at_us), sample(1500, armed_at_us)), armed_at_us)
+
+        commanded_at_us = armed_at_us + 1000
+        safety.update(
+            (sample(2000, commanded_at_us), sample(1500, commanded_at_us)),
+            commanded_at_us,
+        )
+
+        stale_at_us = commanded_at_us + config.INPUT_TIMEOUT_MS * 1000 + 1
+        safety.update(
+            (sample(2000, commanded_at_us), sample(1500, commanded_at_us)),
+            stale_at_us,
+        )
+
+        latch_at_us = stale_at_us + config.INPUT_LOSS_LATCH_MS * 1000 + 1
+        output = safety.update(
+            (sample(2000, commanded_at_us), sample(1500, commanded_at_us)),
+            latch_at_us,
+        )
+        self.assertFalse(output.armed)
+        self.assertTrue(output.failsafe)
+        self.assertEqual(output.commands, [0, 0])
+        self.assertEqual(safety.last_latch_reason, "input_loss")
+
+        recovered_non_neutral_us = latch_at_us + 1
+        output = safety.update(
+            (
+                sample(2000, recovered_non_neutral_us),
+                sample(1500, recovered_non_neutral_us),
+            ),
+            recovered_non_neutral_us,
+        )
+        self.assertFalse(output.armed)
         self.assertEqual(output.commands, [0, 0])
 
     def test_missing_stale_invalid_or_malformed_input_outputs_zero(self):
@@ -154,7 +366,8 @@ class SafetyMappingTest(unittest.TestCase):
         safety.update((sample(1500, armed_at_us), sample(1500, armed_at_us)), armed_at_us)
 
         commanded_at_us = armed_at_us + 1000
-        output = safety.update(
+        output = confirmed_update(
+            safety,
             (sample(2000, commanded_at_us), sample(1500, commanded_at_us)),
             commanded_at_us,
         )
@@ -170,6 +383,38 @@ class SafetyMappingTest(unittest.TestCase):
         self.assertFalse(output.armed)
         self.assertTrue(output.failsafe)
         self.assertEqual(output.commands, [0, 0])
+        self.assertEqual(safety.last_latch_reason, "hard_fault")
+        self.assertEqual(safety.last_fault_reason, "pulse_width")
+
+    def test_future_sample_timestamp_is_reported_as_hard_fault(self):
+        safety = Safety()
+        output = safety.update((sample(1500, 100), sample(1500, 100)), 99)
+
+        self.assertFalse(output.armed)
+        self.assertTrue(output.failsafe)
+        self.assertEqual(output.commands, [0, 0])
+        self.assertEqual(safety.last_latch_reason, "hard_fault")
+        self.assertEqual(safety.last_fault_reason, "future_timestamp")
+
+    def test_unseen_samples_are_input_loss_not_hard_fault(self):
+        safety = Safety()
+        output = safety.update((sample(0, 0, False), sample(0, 0, False)), 1000)
+
+        self.assertFalse(output.armed)
+        self.assertTrue(output.failsafe)
+        self.assertEqual(output.commands, [0, 0])
+        self.assertEqual(safety.last_latch_reason, "")
+        self.assertEqual(safety.last_fault_reason, "")
+
+    def test_malformed_valid_flag_is_reported_as_hard_fault(self):
+        safety = Safety()
+        output = safety.update((sample(1500, 0, 1), sample(1500, 0)), 0)
+
+        self.assertFalse(output.armed)
+        self.assertTrue(output.failsafe)
+        self.assertEqual(output.commands, [0, 0])
+        self.assertEqual(safety.last_latch_reason, "hard_fault")
+        self.assertEqual(safety.last_fault_reason, "sample_field")
 
     def test_object_samples_are_accepted_when_valid_and_fresh(self):
         safety = Safety()

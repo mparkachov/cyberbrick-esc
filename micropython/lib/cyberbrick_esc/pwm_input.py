@@ -45,6 +45,11 @@ class PwmInputChannel:
         "pulse_width_us",
         "timestamp_us",
         "valid",
+        "width_0",
+        "width_1",
+        "width_2",
+        "width_count",
+        "width_index",
     )
 
     def __init__(self, pin_id):
@@ -53,6 +58,11 @@ class PwmInputChannel:
         self.pulse_width_us = 0
         self.timestamp_us = 0
         self.valid = False
+        self.width_0 = 0
+        self.width_1 = 0
+        self.width_2 = 0
+        self.width_count = 0
+        self.width_index = 0
         self.pin = Pin(pin_id, Pin.IN)
         self.pin.irq(
             handler=self._handle_edge,
@@ -75,6 +85,42 @@ class PwmInputChannel:
         self.rising_seen = False
         pulse_width_us = ticks_diff(now_us, self.rising_us)
         if config.MIN_VALID_US <= pulse_width_us <= config.MAX_VALID_US:
+            self._record_valid_width(pulse_width_us, now_us)
+
+    def _record_valid_width(self, pulse_width_us, timestamp_us):
+        if self.width_index == 0:
+            self.width_0 = pulse_width_us
+        elif self.width_index == 1:
+            self.width_1 = pulse_width_us
+        else:
+            self.width_2 = pulse_width_us
+
+        self.width_index += 1
+        if self.width_index >= config.PWM_FILTER_SAMPLES:
+            self.width_index = 0
+
+        if self.width_count < config.PWM_FILTER_SAMPLES:
+            self.width_count += 1
+
+        if self.width_count >= config.PWM_FILTER_SAMPLES:
+            self.pulse_width_us = median3(self.width_0, self.width_1, self.width_2)
+        else:
             self.pulse_width_us = pulse_width_us
-            self.timestamp_us = now_us
-            self.valid = True
+
+        self.timestamp_us = timestamp_us
+        self.valid = True
+
+
+def median3(first, second, third):
+    if first > second:
+        if second > third:
+            return second
+        if first > third:
+            return third
+        return first
+
+    if first > third:
+        return first
+    if second > third:
+        return third
+    return second

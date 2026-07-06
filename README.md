@@ -15,14 +15,16 @@ The previous Zephyr implementation is preserved on `origin/backup/zephyr`. The
 observed stock CyberBrick board reports Secure Download Mode with flash
 encryption enabled, so do not force-flash plaintext firmware to that board.
 
-The current phase is a workflow reset:
+The current phase runs the visual ESC simulator on the validated stock-tool
+workflow:
 
 ```text
-stock firmware -> manual REPL when needed -> uv run mpremote -> blink -> restore stock
+stock firmware -> manual REPL when needed -> uv run mpremote -> ESC simulator -> restore stock
 ```
 
-The ESC simulator library remains in the repo for a later phase, but simulator
-deployment is intentionally disabled until blink and restore are reliable.
+The simulator is visual-only. It reads two RC PWM inputs, applies the
+center-neutral safety mapping, and shows the final safe command state on the
+onboard RGB LED. It does not drive GPIO4-GPIO7 motor outputs.
 
 ## Hardware Contract
 
@@ -78,6 +80,7 @@ just mp-repl
 just miniterm
 just run-blink
 just deploy-blink
+just deploy
 just restore-stock
 just test
 ```
@@ -173,20 +176,126 @@ Restore stock boot:
 just restore-stock
 ```
 
-This copies remote `boot.stock.py` back to `boot.py`, removes old PoC auto-main
-files if present, and resets the board.
+This copies remote `boot.stock.py` back to `boot.py`, removes deployed PoC
+startup/library files if present, and resets the board.
 
 Acceptance: after reset or power-cycle, the board returns to the stock
 solid-green behavior.
 
-## Phase 2 Direction
+## ESC Simulator Workflow
 
-Only after Phase 1 is stable, resume ESC simulator deployment. Use the same
-`uv` plus stock `mpremote` approach. The simulator modules under
-`micropython/lib/cyberbrick_esc/` and host tests are kept for that later phase,
-but they are not part of the active deploy workflow.
+From a REPL-reachable stock board, deploy the simulator:
 
-Phase 2 still must preserve these safety boundaries:
+```sh
+just deploy
+```
+
+This backs up the filesystem, preserves remote `boot.py` as `boot.stock.py` if
+needed, creates remote `lib/cyberbrick_esc/`, copies
+`micropython/examples/esc_boot.py` to remote `boot.py`, copies
+`micropython/main.py` to remote `main.py`, copies the simulator library, and
+resets the board.
+
+The boot-file override is required because the observed stock CyberBrick
+`boot.py` runs the stock app directly and does not reliably hand off to
+`main.py`.
+
+Expected simulator behavior:
+
+- Missing input or stale input: blue neutral.
+- Both channels valid and neutral for at least 1000 ms: armed, still blue.
+- Brief non-neutral glitches up to 300 ms during arming are tolerated, but
+  output remains zero until arming completes.
+- Input loss after arming outputs zero while stale, but does not latch a full
+  disarm unless the loss persists for another 1500 ms.
+- Dominant forward command: green, with intensity based on command magnitude.
+- Dominant reverse command: red, with intensity based on command magnitude.
+- Exact opposing direction tie: blue.
+- Endpoint captures within 150 us of the 1000 us or 2000 us command endpoints
+  are treated as full command. This keeps near-endpoint RC PWM captures stable
+  in the final command stream instead of hiding imbalance in the LED layer.
+- PWM input capture uses a three-sample median filter to reject isolated valid
+  pulse-width spikes.
+- Final command changes require 80 ms of confirmation before release. Failsafe
+  and hard-fault paths still output zero immediately.
+
+The LED is debug feedback only. Final safe commands in the diagnostic log are
+the behavior to validate for future motor output; do not treat LED smoothness as
+the motor-output stability signal.
+
+Current hardware state:
+
+- `just deploy` persistently starts the simulator after reset/power-cycle.
+- With Raspberry Pi 50 Hz PWM on S3/S4, the simulator arms from neutral and
+  releases stable final commands after the 80 ms confirmation window.
+- Forward test state holds `cmd=1000,0` and shows green.
+- Reverse test state holds `cmd=-1000,0` and shows red.
+- Opposing endpoint tie holds `cmd=1000,-1000` and shows blue, including while
+  isolated raw captures briefly move away from the endpoint.
+- When the Raspberry Pi script disables PWM, stale input immediately outputs
+  `cmd=0,0`; if input remains absent, `latch=input_loss` appears after the
+  configured 1500 ms latch window.
+
+Observed raw captures still contain occasional valid-width excursions on the
+input lines. The current PoC treats those as input-source/capture jitter and
+stabilizes the final command stream with the median filter and command
+confirmation described above.
+
+Default input behavior:
+
+```text
+1000 us -> -1000
+1500 us -> 0
+2000 us -> +1000
+```
+
+The neutral deadband is 50 us around 1500 us. The endpoint deadband is 150 us,
+so 900-1150 us maps to full reverse and 1850-2100 us maps to full forward
+within the broader 900-2100 us valid-pulse range.
+
+When miniterm is attached, the simulator prints a startup banner and diagnostic
+lines every 500 ms:
+
+```text
+ESC simulator starting inputs=(1, 0) led=(8,) loop_hz=200 diag_ms=500 valid_us=900-2100 neutral_us=1500 neutral_db_us=50 endpoint_db_us=150 arm_ms=1000 arm_grace_ms=300 loss_latch_ms=1500 cmd_confirm_ms=80 pwm_filter=3
+ESC diag t_ms=1234 reason=armed latch= fault= armed=1 failsafe=0 neutral_wait=0 neutral_ms=0 non_neutral_ms=0 loss_ms=0 raw=1000,0 cmd=1000,0 led=0,255,0 ch0=2000us/v1/f1/age3ms,ch1=1500us/v1/f1/age3ms
+```
+
+Diagnostic fields:
+
+- `v1` means the last captured pulse width was valid.
+- `f1` means the last valid pulse is fresh enough for the failsafe window.
+- `raw` is the command that the captured pulses would map to before arming and
+  failsafe safety gates.
+- `reason=need_neutral` means capture is working but arming is blocked because
+  at least one channel is outside the neutral deadband.
+- `reason=loss_pending` means the simulator is armed but has seen a short
+  stale-input condition; output is zero unless fresh input returns quickly.
+- `latch=input_loss` means stale input persisted long enough to require neutral
+  re-arming before commands are released again.
+- `latch=hard_fault` means malformed input caused an immediate latched safe
+  state.
+- `fault=future_timestamp` means a captured PWM timestamp was newer than the
+  safety time reference. That indicates an input snapshot/timing bug, not a
+  normal RC command.
+- Other `fault` values describe malformed samples, invalid sample fields, or
+  out-of-range pulse widths.
+- `armed=0` with `neutral_wait=1` means neutral has been detected but not held
+  for the full arming time yet.
+- `neutral_ms` is the current neutral-hold duration used for arming.
+- `non_neutral_ms` is how long a pre-arm non-neutral glitch has persisted.
+- `loss_ms` is how long an armed stale-input condition has persisted before a
+  latched disarm.
+- `cmd` is the final safe command after arming and failsafe logic.
+- `led` is the RGB value written from the final safe command.
+
+Restore stock after simulator testing:
+
+```sh
+just restore-stock
+```
+
+The simulator must preserve these safety boundaries:
 
 - No plaintext firmware flashing to locked stock boards.
 - No real motor output in the visual simulator milestone.
@@ -213,6 +322,7 @@ micropython/
   examples/
     blink_boot.py
     blink_main.py
+    esc_boot.py
   lib/
     cyberbrick_esc/
       app.py

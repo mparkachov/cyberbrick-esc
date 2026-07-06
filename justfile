@@ -53,6 +53,26 @@ deploy-blink:
     uv run mpremote connect "{{device}}" resume fs --force cp micropython/examples/blink_boot.py :boot.py
     uv run mpremote connect "{{device}}" resume reset
 
+deploy:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just mp-backup
+    mkdir -p .cache
+    tmp="$(mktemp -d ".cache/stock-boot.XXXXXX")"
+    trap 'rm -rf "$tmp"' EXIT
+    if uv run mpremote connect "{{device}}" resume fs --force cp :boot.stock.py "$tmp/boot.stock.py" >/dev/null 2>&1; then
+        printf 'Remote boot.stock.py already exists; leaving it unchanged.\n'
+    else
+        uv run mpremote connect "{{device}}" resume fs --force cp :boot.py "$tmp/boot.py"
+        uv run mpremote connect "{{device}}" resume fs --force cp "$tmp/boot.py" :boot.stock.py
+    fi
+    uv run mpremote connect "{{device}}" resume fs mkdir :lib >/dev/null 2>&1 || true
+    uv run mpremote connect "{{device}}" resume fs mkdir :lib/cyberbrick_esc >/dev/null 2>&1 || true
+    uv run mpremote connect "{{device}}" resume fs --force cp micropython/examples/esc_boot.py :boot.py
+    uv run mpremote connect "{{device}}" resume fs --force cp micropython/main.py :main.py
+    uv run mpremote connect "{{device}}" resume fs --force cp micropython/lib/cyberbrick_esc/*.py :lib/cyberbrick_esc/
+    uv run mpremote connect "{{device}}" resume reset
+
 restore-stock:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -60,8 +80,10 @@ restore-stock:
     uv run mpremote connect "{{device}}" resume fs rm :main.py >/dev/null 2>&1 || true
     uv run mpremote connect "{{device}}" resume fs rm :main.poc.py >/dev/null 2>&1 || true
     uv run mpremote connect "{{device}}" resume fs rm :poc_boot_seen.txt >/dev/null 2>&1 || true
+    uv run mpremote connect "{{device}}" resume fs --recursive rm :lib/cyberbrick_esc >/dev/null 2>&1 || true
+    uv run mpremote connect "{{device}}" resume fs rmdir :lib >/dev/null 2>&1 || true
     uv run mpremote connect "{{device}}" resume reset
 
 test:
     uv run python -m unittest discover -s tests
-    uv run python -m py_compile micropython/main.py micropython/examples/blink_*.py micropython/lib/cyberbrick_esc/*.py tests/*.py
+    uv run python -m py_compile micropython/main.py micropython/examples/*.py micropython/lib/cyberbrick_esc/*.py tests/*.py

@@ -34,7 +34,7 @@ Prove the stock CyberBrick MicroPython runtime can host the ESC simulator path w
 - [x] #1 Phase 1 stock-tool workflow is reliable: manual REPL recovery, RAM blink, persistent boot blink, and restore stock all use `uv run mpremote` or documented miniterm.
 - [x] #2 Simulator reads both input channels on GPIO1 and GPIO0 and rejects invalid pulse widths.
 - [x] #3 Safety mapping matches 1000 us -> -1000, 1500 us -> 0, 2000 us -> +1000, with neutral-before-arm and failsafe recovery.
-- [ ] #4 Phase 2 simulator deployment reflects final safe commands after stock-tool blink/restore is validated: blue neutral, green forward, red reverse, and blue on exact opposing ties.
+- [x] #4 Phase 2 simulator deployment reflects final safe commands after stock-tool blink/restore is validated: blue neutral, green forward, red reverse, and blue on exact opposing ties.
 - [x] #5 Documentation explains backup, deploy, restore, wiring, signal limits, no plaintext flashing, and unsupported features.
 <!-- AC:END -->
 
@@ -47,5 +47,14 @@ Keep this as stock-runtime MicroPython work on `main`. The previous Zephyr imple
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-This epic remains open for Phase 2 simulator deployment, but the stock-tool Phase 1 is now validated. Earlier live simulator probes showed that the dormant simulator library can capture 1000/1500/2000 us pulses and compute the expected blue/green/red LED states, but persistent simulator deploy is paused. The repo now has a confirmed `uv`-managed workflow using stock `mpremote`, manual miniterm recovery from the stock solid-green app, RAM blink, persistent boot blink, and restore-to-stock. Probe workflows and simulator deploy recipes are removed from the active workflow. Phase 2 may resume simulator deployment on this stock-tool base.
+The stock-firmware MicroPython ESC simulator PoC is validated. The repo has a
+confirmed `uv`-managed workflow using stock `mpremote`, manual miniterm recovery
+from the stock solid-green app, RAM blink, persistent boot blink, and
+restore-to-stock. Phase 2 deployment is implemented through `just deploy`, which
+installs the visual ESC simulator using the same stock-tool workflow and leaves
+GPIO4-GPIO7 unused. Hardware validation confirms the simulator reads GPIO1/GPIO0
+PWM input, arms from neutral, releases stable final safe commands for forward,
+reverse, and opposing endpoint tie, and returns to safe zero on stale input.
+Probe workflows and custom helper deploy paths remain out of the active
+workflow.
 <!-- SECTION:FINAL_SUMMARY:END -->

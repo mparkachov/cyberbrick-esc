@@ -37,23 +37,28 @@ class LedCommandStateTest(unittest.TestCase):
 
     def test_dominant_forward_shows_green_with_scaled_intensity(self):
         low = state_from_commands([250, 0])
-        high = state_from_commands([750, -250])
+        high = state_from_commands([650, -250])
 
         self.assertEqual(low[0], DIRECTION_FORWARD)
         self.assertEqual(high[0], DIRECTION_FORWARD)
         self.assertGreater(high[1], low[1])
-        self.assertEqual(high[1], active_brightness_from_command(750))
-        self.assertEqual(rgb_from_commands([750, -250]), (0, high[1], 0))
+        self.assertEqual(high[1], active_brightness_from_command(650))
+        self.assertEqual(rgb_from_commands([650, -250]), (0, high[1], 0))
 
     def test_dominant_reverse_shows_red_with_scaled_intensity(self):
         low = state_from_commands([0, -250])
-        high = state_from_commands([500, -750])
+        high = state_from_commands([500, -650])
 
         self.assertEqual(low[0], DIRECTION_REVERSE)
         self.assertEqual(high[0], DIRECTION_REVERSE)
         self.assertGreater(high[1], low[1])
-        self.assertEqual(high[1], active_brightness_from_command(750))
-        self.assertEqual(rgb_from_commands([500, -750]), (high[1], 0, 0))
+        self.assertEqual(high[1], active_brightness_from_command(650))
+        self.assertEqual(rgb_from_commands([500, -650]), (high[1], 0, 0))
+
+    def test_full_commands_show_full_brightness(self):
+        self.assertEqual(active_brightness_from_command(config.COMMAND_MAX), 255)
+        self.assertEqual(rgb_from_commands([config.COMMAND_MAX, 0]), (0, 255, 0))
+        self.assertEqual(rgb_from_commands([config.COMMAND_MIN, 0]), (255, 0, 0))
 
     def test_exact_opposing_ties_return_blue(self):
         self.assertEqual(state_from_commands([500, -500])[0], DIRECTION_NEUTRAL)
@@ -168,12 +173,16 @@ class AppLedIntegrationTest(unittest.TestCase):
             events.append(("sleep", milliseconds))
             raise StopLoop()
 
+        def fake_ticks_us():
+            events.append(("ticks", 123456))
+            return 123456
+
         try:
             app.StatusLed = FakeLed
             app.PwmInput = FakeInputs
             app.Safety = FakeSafety
             app.sleep_ms = fake_sleep_ms
-            app.ticks_us = lambda: 123456
+            app.ticks_us = fake_ticks_us
 
             with self.assertRaises(StopLoop):
                 app.main()
@@ -188,6 +197,7 @@ class AppLedIntegrationTest(unittest.TestCase):
             events,
             [
                 ("samples", raw_samples),
+                ("ticks", 123456),
                 ("safety", raw_samples, 123456),
                 ("led", final_commands),
                 ("sleep", 1000 // config.CONTROL_LOOP_HZ),
