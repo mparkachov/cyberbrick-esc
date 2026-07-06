@@ -4,7 +4,7 @@ title: Persistent Onboard LED Blink
 status: Done
 assignee: []
 created_date: '2026-07-05 09:06'
-updated_date: '2026-07-05 12:05'
+updated_date: '2026-07-06 00:00'
 labels:
   - micropython
   - hardware
@@ -14,7 +14,6 @@ dependencies:
 modified_files:
   - micropython/examples/blink_boot.py
   - micropython/examples/blink_main.py
-  - micropython/examples/led_probe.py
   - micropython/lib/cyberbrick_esc/pixels.py
   - justfile
   - README.md
@@ -36,17 +35,17 @@ Create the first board-visible proof that deploy and startup work by installing 
 - [x] #2 `just deploy-blink` preserves stock `boot.py` as remote `boot.stock.py` before replacing `boot.py`.
 - [x] #3 `just deploy-blink` copies blink files and resets the board.
 - [x] #4 The onboard LED blinks three colors after board reset or power-on without a host command.
-- [x] #5 `just mp-stop` restores stock `boot.py`, removes deployed `main.py`, and recovers stock startup/REPL access.
+- [x] #5 `just restore-stock` restores stock `boot.py`, removes deployed PoC startup files when present, and returns the board to stock startup.
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-The observed stock board boots `./app/rc_main.py` from `boot.py`, so `main.py` alone is not persistent. Keep the boot override reversible. Probe safe candidate WS2812 data pins directly because the visible green LED has not responded to the stock `bbl.leds` abstraction.
+The observed stock board boots `./app/rc_main.py` from `boot.py`, so `main.py` alone is not persistent. Keep the boot override reversible. Phase 1 uses the known onboard WS2812 data pin on GPIO8 only.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Persistent blink bring-up is complete. `just deploy-blink` backs up the stock MicroPython filesystem, preserves the original remote `boot.py` as `boot.stock.py`, installs a reversible blink `boot.py`, and resets the board. The stock board was observed blinking three different colors after unplug/replug with no additional host command. The visible LED did not respond through the stock `bbl.leds` abstraction, so the blink path now uses a direct safe WS2812 candidate-pin driver and includes `run-led-probe` plus `poc_boot_seen.txt` diagnostics for future pin confirmation. `just mp-stop` remains the recovery path to restore stock boot behavior.
+Persistent blink bring-up remains the Phase 1 hardware proof. `just deploy-blink` backs up the stock MicroPython filesystem, preserves the original remote `boot.py` as `boot.stock.py`, installs `micropython/examples/blink_boot.py` as remote `boot.py`, and resets the board. The active blink path uses a direct WS2812 driver on GPIO8 only. `just restore-stock` is the recovery path to restore stock boot behavior.
 <!-- SECTION:FINAL_SUMMARY:END -->

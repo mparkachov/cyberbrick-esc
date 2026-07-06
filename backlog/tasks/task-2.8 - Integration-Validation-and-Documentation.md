@@ -4,7 +4,7 @@ title: Integration, Validation, and Documentation
 status: Done
 assignee: []
 created_date: '2026-07-05 09:06'
-updated_date: '2026-07-05 18:49'
+updated_date: '2026-07-06 00:00'
 labels:
   - documentation
   - validation
@@ -19,13 +19,10 @@ modified_files:
   - README.md
   - AGENTS.md
   - justfile
-  - scripts/mp_prepare_repl.py
-  - scripts/mp_serial_fs.py
-  - micropython/boot.py
-  - micropython/lib/cyberbrick_esc/config.py
-  - micropython/lib/cyberbrick_esc/led.py
-  - tests/test_app_skeleton.py
-  - tests/test_led.py
+  - pyproject.toml
+  - uv.lock
+  - micropython/examples/blink_boot.py
+  - micropython/examples/blink_main.py
 parent_task_id: TASK-2
 milestone: m-1
 priority: medium
@@ -40,11 +37,12 @@ Make the MicroPython simulator milestone usable, recoverable, and documented.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [x] #1 `just deploy` installs the reversible PoC `boot.py`, `main.py`, and `cyberbrick_esc` library files.
-- [x] #2 README documents wiring, 3.3 V signal limits, blink, deploy, backup, restore, failsafe behavior, and intentionally unsupported features.
-- [x] #3 `just test` passes host safety tests.
+- [x] #1 `uv sync`, `uv run mpremote connect list`, and thin `just` aliases are the only active tooling path.
+- [x] #2 README documents manual miniterm REPL recovery, RAM blink, persistent blink, restore stock, wiring, 3.3 V signal limits, and intentionally unsupported features.
+- [x] #3 `just test` passes through `uv run python`.
 - [x] #4 Documentation states that GPIO4-GPIO7 motor outputs are not driven in this milestone.
 - [x] #5 Documentation preserves the warning against force-flashing plaintext firmware to locked stock boards.
+- [x] #6 Phase 1 hardware validation passes: RAM blink, persistent boot blink after power-cycle, and restore stock to solid green.
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -56,5 +54,5 @@ Hardware validation requires a connected stock board in MicroPython REPL mode. K
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Integration and documentation are complete for the stock MicroPython visual ESC simulator milestone. `just deploy` was run on the stock CyberBrick board and copied the reversible PoC `boot.py`, `main.py`, and `lib/cyberbrick_esc/` modules. The deployed board initially showed safe neutral blue with no PWM input, confirming the simulator app replaced the blink example. Because the observed USB serial path cannot reliably interrupt an already-running infinite app, the PoC boot flow now includes sticky double-reset safe REPL mode using `cyberbrick_boot_pending.txt` and `cyberbrick_safe_repl.txt`; in safe mode it renames `main.py` to `main.poc.py` so MicroPython does not auto-run the app after `boot.py` returns. Hardware validation confirmed that after deploy and double reset, `just mp-tree` can inspect the board and shows `boot.py`, `boot.stock.py`, `cyberbrick_safe_repl.txt`, `lib/cyberbrick_esc/`, and `main.poc.py`. README documents wiring, 3.3 V signal limits, blink/deploy/backup/restore/recovery workflows, failsafe behavior, intentionally unsupported features, the locked-board no-plaintext-flashing warning, and that GPIO4-GPIO7 motor outputs are not driven in this milestone. Host validation passes with `just test`.
+Integration is complete for the stock-tool Phase 1 reset. The active path is now `uv` plus stock `mpremote`, with `just` only as thin aliases. Manual miniterm recovery is documented as the bridge from the stock solid-green app to REPL. `uv run python -m unittest discover -s tests`, `just test`, `just --list`, and `uv run mpremote connect list` pass. Hardware validation is confirmed: RAM blink works, persistent boot blink works after reset or power-cycle, and restore stock returns the board to solid green. Simulator deploy and hardware PWM validation are deferred to Phase 2, while the simulator library and host tests remain in the repo.
 <!-- SECTION:FINAL_SUMMARY:END -->
