@@ -4,7 +4,7 @@ title: PWM Input Capture
 status: Done
 assignee: []
 created_date: '2026-07-05 09:06'
-updated_date: '2026-07-05 12:19'
+updated_date: '2026-07-08 00:00'
 labels:
   - micropython
   - input
@@ -23,13 +23,14 @@ ordinal: 10500
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Measure two standard hobby PWM input channels through stock MicroPython GPIO edge interrupts.
+Measure two standard hobby PWM input channels through the most reliable capture
+API exposed by the stock MicroPython runtime.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [x] #1 `Pin.irq` captures rising and falling edges on both input channels.
-- [x] #2 Interrupt handlers are short and do not print or intentionally allocate.
+- [x] #1 Native `machine.time_pulse_us` capture alternates between both input channels.
+- [x] #2 No scheduled Python GPIO interrupt handler is used for edge timestamps.
 - [x] #3 Valid samples include pulse width and timestamp.
 - [x] #4 Invalid pulse widths are ignored and do not update the last-valid timestamp.
 <!-- AC:END -->
@@ -37,11 +38,21 @@ Measure two standard hobby PWM input channels through stock MicroPython GPIO edg
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Use `time.ticks_us()` and `time.ticks_diff()` for pulse measurement. Keep hardware-specific pin numbers in config.
+Use native `machine.time_pulse_us` for pulse measurement and `time.ticks_us`
+for last-valid timestamps. Keep hardware-specific pin numbers in config.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-PWM input capture is implemented through one `Pin.irq` handler per configured channel using both rising and falling edges. Rising edges store the start timestamp, falling edges compute pulse width with `ticks_diff`, and only 900-2100 us pulses replace the last valid sample timestamp. Host tests use a fake `machine.Pin` and clock to verify both default GPIO1/GPIO0 channels, valid sample width/timestamp capture, stale preservation after malformed pulses, falling-edge ignore behavior, interrupt-disabled snapshots, and the non-printing short IRQ handler shape.
+Hardware investigation replaced the original scheduled `Pin.irq` path. Scope
+comparison showed stable source pulses while Python callback timestamps moved
+substantially under runtime load. The active implementation alternates
+GPIO1/GPIO0 through native `machine.time_pulse_us`, reuses sample objects, and
+keeps the three-sample median. Only 900-2100 us measurements replace the
+last-valid width and timestamp; timeouts and malformed measurements are
+ignored until freshness expires. Host tests verify alternating channel order,
+native call configuration, initial timeout behavior, stale preservation,
+median rejection, and persistent command changes. Native polling remains
+preemptible and is explicitly documented as a stock-runtime PoC limitation.
 <!-- SECTION:FINAL_SUMMARY:END -->

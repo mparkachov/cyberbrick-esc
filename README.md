@@ -156,6 +156,53 @@ Acceptance: the onboard LED on GPIO8 blinks while the command is running. Stop
 with Ctrl-C; this command intentionally keeps running because the RAM script
 loops forever. A board reset returns to stock behavior.
 
+### RAM-only native PWM timing probe
+
+Use this probe to inspect stock MicroPython's native pulse timing independently
+of the deployed simulator's safety and filtering. It was also used to replace
+the earlier scheduled Python `Pin.irq` capture. The board must already be
+stopped at a REPL prompt.
+
+1. Reach `>>>` with miniterm and Ctrl-C.
+2. Exit miniterm with `Ctrl-]`.
+3. Do not press RESET or power-cycle the board.
+4. Run:
+
+```sh
+DEVICE=/dev/cu.usbmodem1101 just run-pwm-timing
+```
+
+Equivalent stock command:
+
+```sh
+uv run mpremote connect /dev/cu.usbmodem1101 resume run micropython/examples/pwm_timing_ram.py
+```
+
+`resume run` tells mpremote not to issue its normal Ctrl-D soft reset. This
+recipe performs no filesystem operation and contains no reset command. Opening
+the serial device can still cause a board-specific USB reset; if the startup
+banner does not appear, report the boot output because that reset happened
+before the RAM script could start.
+
+The probe identifies itself before producing measurements:
+
+```text
+PWM TIMING RAM PROBE starting
+probe_id=cyberbrick-pwm-timing-ram-v2 active=ram-probe capture=machine.time_pulse_us pins=(1, 0) timeout_us=30000 report_ms=500 duration_ms=60000
+filesystem=unchanged reset=not-requested led=not-written esc_app=not-running safety=not-running pin_irq=disabled
+```
+
+It does not initialize or update GPIO8. The LED therefore retains its previous
+latched color and must be ignored. It disables any GPIO1/GPIO0 IRQ handlers
+left in RAM by the interrupted simulator before measuring. For each channel it
+discards one synchronization pulse, which may be partial, then records the next
+complete pulse with `machine.time_pulse_us`. `range0` and `range1` are the
+minimum and maximum native measurements in the latest 500 ms reporting window.
+Stop the probe by letting its 60-second run finish. Host Ctrl-C may terminate
+mpremote before the interrupt reaches the board, so the finite run is the
+preferred stop. The persistent files remain unchanged; reset the board later
+when you intentionally want to restart the deployed application.
+
 Deploy persistent boot blink:
 
 ```sh
@@ -214,8 +261,10 @@ Expected simulator behavior:
 - Endpoint captures within 150 us of the 1000 us or 2000 us command endpoints
   are treated as full command. This keeps near-endpoint RC PWM captures stable
   in the final command stream instead of hiding imbalance in the LED layer.
-- PWM input capture uses a three-sample median filter to reject isolated valid
-  pulse-width spikes.
+- PWM input capture alternates GPIO1/GPIO0 through native
+  `machine.time_pulse_us` polling. Safety is evaluated nominally at 50 Hz and
+  each channel is sampled nominally at 25 Hz.
+- A three-sample median filter rejects isolated valid pulse-width spikes.
 - Final command changes require 80 ms of confirmation before release. Failsafe
   and hard-fault paths still output zero immediately.
 
@@ -226,20 +275,34 @@ the motor-output stability signal.
 Current hardware state:
 
 - `just deploy` persistently starts the simulator after reset/power-cycle.
-- With Raspberry Pi 50 Hz PWM on S3/S4, the simulator arms from neutral and
-  releases stable final commands after the 80 ms confirmation window.
-- Forward test state holds `cmd=1000,0` and shows green.
-- Reverse test state holds `cmd=-1000,0` and shows red.
-- Opposing endpoint tie holds `cmd=1000,-1000` and shows blue, including while
-  isolated raw captures briefly move away from the endpoint.
+- Integrated native-capture hardware validation confirms neutral arming,
+  forward, reverse, opposing endpoint tie, and stale-input behavior.
+- With Raspberry Pi 50 Hz PWM on S3/S4, the simulator arms from neutral, holds
+  `cmd=1000,0` for forward, holds `cmd=-1000,0` for reverse, and holds
+  `cmd=1000,-1000` for the opposing endpoint tie.
+- LED feedback follows those final safe commands: blue neutral, green forward,
+  red reverse, and blue for the exact opposing tie.
 - When the Raspberry Pi script disables PWM, stale input immediately outputs
   `cmd=0,0`; if input remains absent, `latch=input_loss` appears after the
   configured 1500 ms latch window.
+- The reverse transition may show one diagnostic line where `raw=-1000,0` while
+  `cmd=1000,0`; this is the intentional 80 ms command-change confirmation
+  window.
 
-Observed raw captures still contain occasional valid-width excursions on the
-input lines. The current PoC treats those as input-source/capture jitter and
-stabilizes the final command stream with the median filter and command
-confirmation described above.
+Scope comparison showed stable electrical inputs while the former scheduled
+Python GPIO callbacks reported large deviations. Native `machine.time_pulse_us`
+polling normally measured within about 1 us, but still produced rare outliers
+when ESP32 runtime work preempted its C polling loop. The current PoC rejects
+out-of-range measurements, applies the three-sample median to valid
+measurements, and then applies command confirmation. This is a measured
+stock-runtime limitation, not input-source jitter.
+
+Native polling is blocking and is not hardware edge capture. It is adequate for
+this visual PoC, but it is not evidence of deterministic timing suitable for
+motor output. On the measured 50 Hz source, expected command transition latency
+is approximately 160 ms across alternating capture, median acceptance, and the
+80 ms command confirmation window. Signal-loss evaluation is also subject to
+the 30 ms native capture timeout.
 
 Default input behavior:
 
@@ -257,14 +320,18 @@ When miniterm is attached, the simulator prints a startup banner and diagnostic
 lines every 500 ms:
 
 ```text
-ESC simulator starting inputs=(1, 0) led=(8,) loop_hz=200 diag_ms=500 valid_us=900-2100 neutral_us=1500 neutral_db_us=50 endpoint_db_us=150 arm_ms=1000 arm_grace_ms=300 loss_latch_ms=1500 cmd_confirm_ms=80 pwm_filter=3
-ESC diag t_ms=1234 reason=armed latch= fault= armed=1 failsafe=0 neutral_wait=0 neutral_ms=0 non_neutral_ms=0 loss_ms=0 raw=1000,0 cmd=1000,0 led=0,255,0 ch0=2000us/v1/f1/age3ms,ch1=1500us/v1/f1/age3ms
+ESC simulator starting inputs=(1, 0) led=(8,) capture=time_pulse_us capture_timeout_us=30000 safety_hz_nominal=50 channel_hz_nominal=25 loop_sleep_ms=0 diag_ms=500 valid_us=900-2100 neutral_us=1500 neutral_db_us=50 endpoint_db_us=150 arm_ms=1000 arm_grace_ms=300 loss_latch_ms=1500 cmd_confirm_ms=80 pwm_filter=3
+ESC diag t_ms=1234 reason=armed latch= fault= armed=1 failsafe=0 neutral_wait=0 neutral_ms=0 non_neutral_ms=0 loss_ms=0 raw=1000,0 cmd=1000,0 led=0,255,0 ch0=2000us/v1/f1/age3ms/last2000us/cap31/rej0,ch1=1500us/v1/f1/age23ms/last1500us/cap30/rej0
 ```
 
 Diagnostic fields:
 
 - `v1` means the last captured pulse width was valid.
 - `f1` means the last valid pulse is fresh enough for the failsafe window.
+- `last` is the latest unfiltered native measurement. It may differ from the
+  filtered width shown immediately after `ch0=` or `ch1=`.
+- `cap` is the cumulative native capture count and `rej` is the cumulative
+  count rejected for timeout or falling outside 900-2100 us.
 - `raw` is the command that the captured pulses would map to before arming and
   failsafe safety gates.
 - `reason=need_neutral` means capture is working but arming is blocked because
@@ -302,6 +369,30 @@ The simulator must preserve these safety boundaries:
 - GPIO4-GPIO7 remain unused until a later approved motor-output task.
 - Startup and failsafe recovery require valid neutral input before commands.
 
+### Oscilloscope connections
+
+The current simulator does not generate motor-output signals. GPIO4-GPIO7 are
+reserved and intentionally unwritten, so there is no motor command waveform to
+measure in this milestone.
+
+To verify the PWM signals at the CyberBrick input:
+
+| Scope channel | Probe tip | Ground clip |
+| --- | --- | --- |
+| CH1 | S3 signal / GPIO1 | CyberBrick GND |
+| CH2 | S4 signal / GPIO0 | CyberBrick GND |
+
+The Raspberry Pi PWM source and CyberBrick must share that same ground. Use DC
+coupling and confirm the high level does not exceed 3.3 V. Do not attach a scope
+ground clip to a motor terminal or any non-ground H-bridge node.
+
+GPIO8 is the only active output in this PoC. Probing GPIO8 relative to
+CyberBrick GND shows short WS2812 data bursts when the debug color changes; it
+does not expose either numeric ESC command as a conventional PWM output.
+GPIO4/GPIO5 are reserved for future Motor 1 control and GPIO6/GPIO7 for future
+Motor 2 control, but they must not be treated as outputs until a separate
+motor-driver task implements and validates them.
+
 ## Host Checks
 
 ```sh
@@ -323,6 +414,7 @@ micropython/
     blink_boot.py
     blink_main.py
     esc_boot.py
+    pwm_timing_ram.py
   lib/
     cyberbrick_esc/
       app.py
@@ -341,4 +433,5 @@ AGENTS.md
 - [MicroPython mpremote](https://docs.micropython.org/en/latest/reference/mpremote.html)
 - [MicroPython reset and boot sequence](https://docs.micropython.org/en/latest/reference/reset_boot.html)
 - [MicroPython NeoPixel](https://docs.micropython.org/en/latest/library/neopixel.html)
-- [MicroPython Pin IRQ](https://docs.micropython.org/en/latest/library/machine.Pin.html)
+- [MicroPython `machine.time_pulse_us`](https://docs.micropython.org/en/v1.23.0/library/machine.html#machine.time_pulse_us)
+- [MicroPython 1.23 ESP32 RMT limitation](https://docs.micropython.org/en/v1.23.0/library/esp32.html#rmt)

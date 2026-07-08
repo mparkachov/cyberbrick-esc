@@ -1,10 +1,10 @@
 ---
 id: TASK-2
 title: 'EPIC: Stock MicroPython ESC Simulator PoC'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-07-05 09:06'
-updated_date: '2026-07-06 00:00'
+updated_date: '2026-07-08 00:00'
 labels:
   - epic
   - micropython
@@ -52,9 +52,15 @@ confirmed `uv`-managed workflow using stock `mpremote`, manual miniterm recovery
 from the stock solid-green app, RAM blink, persistent boot blink, and
 restore-to-stock. Phase 2 deployment is implemented through `just deploy`, which
 installs the visual ESC simulator using the same stock-tool workflow and leaves
-GPIO4-GPIO7 unused. Hardware validation confirms the simulator reads GPIO1/GPIO0
-PWM input, arms from neutral, releases stable final safe commands for forward,
-reverse, and opposing endpoint tie, and returns to safe zero on stale input.
-Probe workflows and custom helper deploy paths remain out of the active
-workflow.
+GPIO4-GPIO7 unused. Scope comparison established that the original scheduled
+Python GPIO callbacks distorted pulse timing even with stable input. The active
+implementation now alternates native `machine.time_pulse_us` capture and keeps
+the median and safety filters explicit in the final command path. The
+standalone RAM probe verifies that native polling is normally accurate to about
+1 us but still has rare runtime-preemption outliers. Integrated native-capture
+hardware validation confirms the deployed app starts after reset/power-cycle,
+arms from neutral, follows forward/reverse/opposing-tie PWM commands in the
+final safe command stream, and enters the documented stale-input and
+`input_loss` states when PWM stops. The milestone remains visual-only; GPIO4-
+GPIO7 motor outputs are intentionally unused.
 <!-- SECTION:FINAL_SUMMARY:END -->

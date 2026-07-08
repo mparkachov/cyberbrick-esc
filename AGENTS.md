@@ -42,10 +42,17 @@ Default future simulator signal behavior:
 2000 us -> full forward
 ```
 
-The active MicroPython path uses a 50 us neutral deadband, 150 us endpoint
-deadband, three-sample PWM median filter, and 80 ms command-change
-confirmation. These are part of the final command stream, not LED display
-workarounds.
+The active MicroPython path alternates native `machine.time_pulse_us` polling
+between both channels, nominally evaluates safety at 50 Hz, and samples each
+channel at 25 Hz. It uses a 50 us neutral deadband, 150 us endpoint deadband,
+three-sample PWM median filter, and 80 ms command-change confirmation. These
+are part of the final command stream, not LED display workarounds.
+
+Hardware testing showed that scheduled Python `Pin.irq` callbacks do not
+provide edge timestamps on this ESP32 port. Native polling is much more
+accurate but still has rare preemption outliers and is not hardware capture.
+Treat the expected roughly 160 ms command-transition latency and non-
+deterministic capture timing as stock-runtime PoC limitations.
 
 Active hardware work is still visual-only: stock-tool blink/restore and the
 MicroPython ESC simulator. The simulator reads inputs and drives only the RGB
@@ -102,6 +109,7 @@ Allowed board commands:
 - `uv run mpremote connect list`
 - `uv run mpremote connect <device> resume repl`
 - `uv run mpremote connect <device> resume run micropython/examples/blink_main.py`
+- `uv run mpremote connect <device> resume run micropython/examples/pwm_timing_ram.py`
 - `uv run mpremote connect <device> resume fs ...`
 - `uv run python -m serial.tools.miniterm --raw --dtr 0 --rts 0 <device> 115200`
 - `DEVICE=<device> just miniterm`
@@ -161,6 +169,7 @@ micropython/
     blink_boot.py
     blink_main.py
     esc_boot.py
+    pwm_timing_ram.py
   lib/
     cyberbrick_esc/
 tests/
@@ -192,6 +201,7 @@ Manual hardware validation:
 ```sh
 uv run mpremote connect list
 just run-blink
+just run-pwm-timing
 just deploy-blink
 just deploy
 just restore-stock

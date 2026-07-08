@@ -200,6 +200,6 @@ class AppLedIntegrationTest(unittest.TestCase):
                 ("ticks", 123456),
                 ("safety", raw_samples, 123456),
                 ("led", final_commands),
-                ("sleep", 1000 // config.CONTROL_LOOP_HZ),
+                ("sleep", config.CONTROL_LOOP_SLEEP_MS),
             ],
         )

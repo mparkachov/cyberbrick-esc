@@ -4,7 +4,7 @@ title: Stock-Tool ESC Simulator Deployment
 status: Done
 assignee: []
 created_date: '2026-07-06 00:00'
-updated_date: '2026-07-06 00:00'
+updated_date: '2026-07-08 00:00'
 labels:
   - micropython
   - deployment
@@ -48,7 +48,7 @@ workflow.
 - [x] #6 Arming tolerates brief non-neutral capture glitches while keeping final commands zero until arming completes.
 - [x] #7 Armed state tolerates brief stale-input glitches by outputting zero without latching disarm unless loss persists.
 - [x] #8 Agent guidance states that final safe commands, not LED smoothness, are the stability target for future motor output.
-- [x] #9 Hardware validation confirms the persistent simulator starts after reset/power-cycle and LED feedback follows final safe commands.
+- [x] #9 Hardware validation confirms the native-capture simulator starts after reset/power-cycle and LED feedback follows final safe commands.
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -71,18 +71,26 @@ prints 500 ms diagnostics showing captured PWM widths, freshness, pre-safety raw
 mapped commands, arming/failsafe reason, hard-fault detail, final commands, and
 LED RGB.
 
-Latest hardware evidence confirms the persistent simulator starts, arms from
-neutral, holds `cmd=1000,0` for forward, `cmd=-1000,0` for reverse, and
-`cmd=1000,-1000` for opposing endpoint tie. LED feedback follows those final
-commands: green, red, and blue respectively. When PWM stops, stale input
-immediately outputs `cmd=0,0` and later reports `latch=input_loss` after the
-1500 ms latch window.
+Latest native-capture hardware evidence confirms the persistent simulator
+starts after reset/power-cycle, waits for fresh input, arms from neutral, holds
+`cmd=1000,0` for the 2000/1500 us forward step, holds `cmd=-1000,0` for the
+1000/1500 us reverse step, and holds `cmd=1000,-1000` for the 2000/1000 us
+opposing endpoint tie. LED feedback follows those final safe commands as green,
+red, and blue respectively. When PWM stops, stale input immediately outputs
+`cmd=0,0`; if input remains absent, `latch=input_loss` appears after the
+configured 1500 ms latch window. The observed one-line delay where
+`raw=-1000,0` while `cmd=1000,0` is the expected 80 ms command-change
+confirmation behavior.
 
-Raw input captures still show occasional valid-width excursions, so the input
-path applies a three-sample PWM median filter, and the command path applies a
-50 us neutral deadband, 150 us endpoint deadband, endpoint/neutral command
-snapping, and 80 ms command-change confirmation. These filters are part of the
-final command stream rather than LED-only smoothing. Agent guidance makes final
-safe commands the stability target for future motor output and keeps LED
-feedback as downstream debug only.
+Follow-up scope testing showed stable electrical input while scheduled Python
+GPIO callback timestamps moved under runtime load. Input capture now alternates
+native `machine.time_pulse_us` measurements at a nominal 25 Hz per channel and
+applies a three-sample median filter. Native polling still has rare preemption
+outliers, so this remains a visual stock-runtime PoC rather than deterministic
+motor-control evidence. The command path also applies a 50 us neutral deadband,
+150 us endpoint deadband, endpoint/neutral command snapping, and 80 ms
+command-change confirmation. These filters are part of the final command
+stream rather than LED-only smoothing. Agent guidance makes final safe commands
+the stability target for future motor output and keeps LED feedback as
+downstream debug only.
 <!-- SECTION:FINAL_SUMMARY:END -->

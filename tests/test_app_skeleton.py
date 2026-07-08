@@ -31,8 +31,10 @@ class AppSkeletonConfigTest(unittest.TestCase):
         self.assertEqual(config.COMMAND_CHANGE_CONFIRM_MS, 80)
         self.assertEqual(config.COMMAND_NEUTRAL_SNAP, 100)
         self.assertEqual(config.COMMAND_ENDPOINT_SNAP, 900)
-        self.assertEqual(config.CONTROL_LOOP_HZ, 200)
-        self.assertEqual(control_loop_sleep_ms(), 5)
+        self.assertEqual(config.CONTROL_LOOP_HZ, 50)
+        self.assertEqual(config.CONTROL_LOOP_SLEEP_MS, 0)
+        self.assertEqual(config.PWM_CAPTURE_TIMEOUT_US, 30000)
+        self.assertEqual(control_loop_sleep_ms(), 0)
 
     def test_motor_pins_are_not_configured(self):
         configured_pins = set(config.INPUT_PINS)

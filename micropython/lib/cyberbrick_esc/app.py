@@ -47,8 +47,7 @@ def main():
 
 
 def control_loop_sleep_ms():
-    sleep_time_ms = 1000 // config.CONTROL_LOOP_HZ
-    return sleep_time_ms if sleep_time_ms > 0 else 1
+    return config.CONTROL_LOOP_SLEEP_MS
 
 
 def diagnostic_due(now_us, last_diagnostic_us):
@@ -60,10 +59,13 @@ def diagnostic_due(now_us, last_diagnostic_us):
 def print_startup():
     print(
         "ESC simulator starting "
-        "inputs={} led={} loop_hz={} diag_ms={} valid_us={}-{} neutral_us={} neutral_db_us={} endpoint_db_us={} arm_ms={} arm_grace_ms={} loss_latch_ms={} cmd_confirm_ms={} pwm_filter={}".format(
+        "inputs={} led={} capture=time_pulse_us capture_timeout_us={} safety_hz_nominal={} channel_hz_nominal={} loop_sleep_ms={} diag_ms={} valid_us={}-{} neutral_us={} neutral_db_us={} endpoint_db_us={} arm_ms={} arm_grace_ms={} loss_latch_ms={} cmd_confirm_ms={} pwm_filter={}".format(
             config.INPUT_PINS,
             config.LED_DATA_PINS,
+            config.PWM_CAPTURE_TIMEOUT_US,
             config.CONTROL_LOOP_HZ,
+            config.CONTROL_LOOP_HZ // config.CHANNEL_COUNT,
+            config.CONTROL_LOOP_SLEEP_MS,
             config.DIAGNOSTIC_INTERVAL_MS,
             config.MIN_VALID_US,
             config.MAX_VALID_US,
@@ -214,10 +216,13 @@ def channel_diagnostic(samples, index, now_us):
     except ValueError:
         age_ms = -1
 
-    return "ch{}={}us/v{}/f{}/age{}ms".format(
+    return "ch{}={}us/v{}/f{}/age{}ms/last{}us/cap{}/rej{}".format(
         index,
         pulse_width_us,
         int(valid),
         int(fresh),
         age_ms,
+        getattr(sample, "last_capture_us", -1),
+        getattr(sample, "capture_count", -1),
+        getattr(sample, "rejected_count", -1),
     )

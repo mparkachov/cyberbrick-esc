@@ -1,4 +1,3 @@
-import inspect
 import unittest
 
 from cyberbrick_esc import config
@@ -7,172 +6,167 @@ from cyberbrick_esc import pwm_input
 
 class FakePin:
     IN = 0
-    IRQ_RISING = 1
-    IRQ_FALLING = 2
-
     instances = []
 
     def __init__(self, pin_id, mode):
         self.pin_id = pin_id
         self.mode = mode
-        self.handler = None
-        self.trigger = None
-        self._value = 0
         FakePin.instances.append(self)
-
-    def irq(self, handler, trigger):
-        self.handler = handler
-        self.trigger = trigger
-
-    def value(self):
-        return self._value
-
-    def set_value(self, value):
-        self._value = value
 
 
 class FakeClock:
     now_us = 0
 
 
+class FakePulseReader:
+    values = []
+    calls = []
+
+    @classmethod
+    def read(cls, pin, pulse_level, timeout_us):
+        cls.calls.append((pin.pin_id, pulse_level, timeout_us))
+        FakeClock.now_us += 20000
+        return cls.values.pop(0)
+
+
 class PwmInputCaptureTest(unittest.TestCase):
     def setUp(self):
         self.old_pin = pwm_input.Pin
-        self.old_disable_irq = pwm_input.disable_irq
-        self.old_enable_irq = pwm_input.enable_irq
+        self.old_time_pulse_us = pwm_input.time_pulse_us
         self.old_ticks_us = pwm_input.ticks_us
-        self.irq_calls = []
         FakePin.instances = []
+        FakePulseReader.values = []
+        FakePulseReader.calls = []
         FakeClock.now_us = 0
 
         pwm_input.Pin = FakePin
-        pwm_input.disable_irq = self.disable_irq
-        pwm_input.enable_irq = self.enable_irq
+        pwm_input.time_pulse_us = FakePulseReader.read
         pwm_input.ticks_us = self.ticks_us
 
     def tearDown(self):
         pwm_input.Pin = self.old_pin
-        pwm_input.disable_irq = self.old_disable_irq
-        pwm_input.enable_irq = self.old_enable_irq
+        pwm_input.time_pulse_us = self.old_time_pulse_us
         pwm_input.ticks_us = self.old_ticks_us
-
-    def disable_irq(self):
-        self.irq_calls.append("disable")
-        return "irq-state"
-
-    def enable_irq(self, state):
-        self.irq_calls.append(("enable", state))
 
     def ticks_us(self):
         return FakeClock.now_us
 
-    def trigger_edge(self, pin, value, timestamp_us):
-        FakeClock.now_us = timestamp_us
-        pin.set_value(value)
-        pin.handler(pin)
+    def capture(self, inputs, *widths):
+        FakePulseReader.values.extend(widths)
+        samples = None
+        for _ in widths:
+            samples = inputs.samples()
+        return samples
 
-    def test_default_inputs_capture_both_edges_on_both_channels(self):
+    def test_default_inputs_use_native_capture_without_gpio_irq(self):
         inputs = pwm_input.PwmInput()
 
         self.assertEqual([pin.pin_id for pin in FakePin.instances], list(config.INPUT_PINS))
-        for pin in FakePin.instances:
-            self.assertEqual(pin.mode, FakePin.IN)
-            self.assertEqual(pin.trigger, FakePin.IRQ_RISING | FakePin.IRQ_FALLING)
-            self.assertIsNotNone(pin.handler)
+        self.assertTrue(all(pin.mode == FakePin.IN for pin in FakePin.instances))
+        self.assertTrue(all(not hasattr(pin, "handler") for pin in FakePin.instances))
 
-        self.trigger_edge(FakePin.instances[0], 1, 1000)
-        self.trigger_edge(FakePin.instances[0], 0, 2500)
-        self.trigger_edge(FakePin.instances[1], 1, 3000)
-        self.trigger_edge(FakePin.instances[1], 0, 4500)
+        samples = self.capture(inputs, 1500, 1501)
 
-        samples = inputs.samples()
-        self.assertEqual([sample.pulse_width_us for sample in samples], [1500, 1500])
-        self.assertEqual([sample.timestamp_us for sample in samples], [2500, 4500])
+        self.assertEqual(
+            FakePulseReader.calls,
+            [
+                (config.INPUT_PINS[0], 1, config.PWM_CAPTURE_TIMEOUT_US),
+                (config.INPUT_PINS[1], 1, config.PWM_CAPTURE_TIMEOUT_US),
+            ],
+        )
+        self.assertEqual([sample.pulse_width_us for sample in samples], [1500, 1501])
+        self.assertEqual([sample.timestamp_us for sample in samples], [20000, 40000])
+        self.assertEqual([sample.last_capture_us for sample in samples], [1500, 1501])
+        self.assertEqual([sample.capture_count for sample in samples], [1, 1])
+        self.assertEqual([sample.rejected_count for sample in samples], [0, 0])
         self.assertTrue(all(sample.valid for sample in samples))
 
-    def test_invalid_width_does_not_replace_last_valid_sample(self):
+    def test_samples_capture_one_alternating_channel_per_call(self):
         inputs = pwm_input.PwmInput()
-        pin = FakePin.instances[0]
 
-        self.trigger_edge(pin, 1, 1000)
-        self.trigger_edge(pin, 0, 2500)
-        valid_sample = inputs.samples()[0]
-        self.assertEqual(valid_sample.pulse_width_us, 1500)
-        self.assertEqual(valid_sample.timestamp_us, 2500)
-        self.assertTrue(valid_sample.valid)
+        first = self.capture(inputs, 1500)
+        self.assertTrue(first[0].valid)
+        self.assertFalse(first[1].valid)
 
-        self.trigger_edge(pin, 1, 4000)
-        self.trigger_edge(pin, 0, 4700)
-        sample_after_invalid = inputs.samples()[0]
+        second = self.capture(inputs, 1500)
+        self.assertTrue(second[0].valid)
+        self.assertTrue(second[1].valid)
 
-        self.assertEqual(sample_after_invalid.pulse_width_us, 1500)
-        self.assertEqual(sample_after_invalid.timestamp_us, 2500)
-        self.assertTrue(sample_after_invalid.valid)
+        third = self.capture(inputs, 1600)
+        self.assertEqual(FakePulseReader.calls[-1][0], config.INPUT_PINS[0])
+        self.assertEqual(third[0].pulse_width_us, 1600)
+
+    def test_invalid_width_and_timeout_preserve_last_valid_sample(self):
+        inputs = pwm_input.PwmInput()
+        samples = self.capture(inputs, 1500, 1500)
+        original_width = samples[0].pulse_width_us
+        original_timestamp = samples[0].timestamp_us
+
+        self.capture(inputs, 3000, 1500)
+        samples = self.capture(inputs, -2, 1500)
+
+        self.assertEqual(samples[0].pulse_width_us, original_width)
+        self.assertEqual(samples[0].timestamp_us, original_timestamp)
+        self.assertEqual(samples[0].last_capture_us, -2)
+        self.assertEqual(samples[0].rejected_count, 2)
+        self.assertTrue(samples[0].valid)
+
+    def test_initial_timeout_does_not_publish_a_sample(self):
+        inputs = pwm_input.PwmInput()
+
+        samples = self.capture(inputs, -2)
+
+        self.assertEqual(samples[0].pulse_width_us, 0)
+        self.assertEqual(samples[0].timestamp_us, 0)
+        self.assertEqual(samples[0].last_capture_us, -2)
+        self.assertEqual(samples[0].rejected_count, 1)
+        self.assertFalse(samples[0].valid)
 
     def test_median_filter_rejects_isolated_valid_width_spike(self):
         inputs = pwm_input.PwmInput()
-        pin = FakePin.instances[0]
+        samples = self.capture(
+            inputs,
+            1500,
+            1500,
+            1510,
+            1500,
+            1490,
+            1500,
+            1000,
+            1500,
+        )
 
-        self.trigger_edge(pin, 1, 1000)
-        self.trigger_edge(pin, 0, 2500)
-        self.trigger_edge(pin, 1, 21000)
-        self.trigger_edge(pin, 0, 22510)
-        self.trigger_edge(pin, 1, 41000)
-        self.trigger_edge(pin, 0, 42490)
-
-        stable_sample = inputs.samples()[0]
-        self.assertEqual(stable_sample.pulse_width_us, 1500)
-
-        self.trigger_edge(pin, 1, 61000)
-        self.trigger_edge(pin, 0, 62000)
-
-        filtered_sample = inputs.samples()[0]
-        self.assertEqual(filtered_sample.pulse_width_us, 1490)
-        self.assertEqual(filtered_sample.timestamp_us, 62000)
-        self.assertTrue(filtered_sample.valid)
+        self.assertEqual(samples[0].pulse_width_us, 1490)
+        self.assertEqual(samples[0].timestamp_us, 140000)
+        self.assertTrue(samples[0].valid)
 
     def test_median_filter_accepts_persistent_width_change(self):
         inputs = pwm_input.PwmInput()
-        pin = FakePin.instances[0]
+        samples = self.capture(
+            inputs,
+            1500,
+            1500,
+            1500,
+            1500,
+            1500,
+            1500,
+            2000,
+            1500,
+            2000,
+            1500,
+        )
 
-        self.trigger_edge(pin, 1, 1000)
-        self.trigger_edge(pin, 0, 2500)
-        self.trigger_edge(pin, 1, 21000)
-        self.trigger_edge(pin, 0, 22500)
-        self.trigger_edge(pin, 1, 41000)
-        self.trigger_edge(pin, 0, 42500)
-        self.trigger_edge(pin, 1, 61000)
-        self.trigger_edge(pin, 0, 63000)
-        self.trigger_edge(pin, 1, 81000)
-        self.trigger_edge(pin, 0, 83000)
+        self.assertEqual(samples[0].pulse_width_us, 2000)
 
-        changed_sample = inputs.samples()[0]
-        self.assertEqual(changed_sample.pulse_width_us, 2000)
-
-    def test_falling_edge_without_rising_edge_is_ignored(self):
+    def test_sample_objects_are_reused_without_interrupt_snapshot(self):
         inputs = pwm_input.PwmInput()
-        self.trigger_edge(FakePin.instances[0], 0, 2500)
+        first = inputs._samples
+        self.capture(inputs, 1500, 1500)
+        second = inputs._samples
 
-        sample = inputs.samples()[0]
-        self.assertEqual(sample.pulse_width_us, 0)
-        self.assertEqual(sample.timestamp_us, 0)
-        self.assertFalse(sample.valid)
+        self.assertIs(first, second)
+        self.assertIs(first[0], inputs._channels[0].current_sample)
 
-    def test_samples_are_copied_with_interrupts_disabled(self):
-        inputs = pwm_input.PwmInput()
-        self.trigger_edge(FakePin.instances[0], 1, 1000)
-        self.trigger_edge(FakePin.instances[0], 0, 2500)
 
-        samples = inputs.samples()
-
-        self.assertEqual(self.irq_calls[-2:], ["disable", ("enable", "irq-state")])
-        self.assertIsInstance(samples[0], pwm_input.PulseSample)
-        self.assertIsNot(samples[0], inputs._channels[0])
-
-    def test_irq_handler_remains_short_and_non_printing(self):
-        source = inspect.getsource(pwm_input.PwmInputChannel._handle_edge)
-
-        self.assertNotIn("print", source)
-        self.assertNotIn("PulseSample", source)
-        self.assertNotIn("[", source)
-        self.assertNotIn("{", source)
+if __name__ == "__main__":
+    unittest.main()
