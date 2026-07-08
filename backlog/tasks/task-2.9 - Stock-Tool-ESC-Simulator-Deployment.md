@@ -56,7 +56,9 @@ workflow.
 <!-- SECTION:NOTES:BEGIN -->
 The observed stock `boot.py` runs the vendor app directly, so simulator
 deployment installs `micropython/examples/esc_boot.py` as remote `boot.py` and
-keeps the real app entrypoint in remote `main.py`. GPIO4-GPIO7 remain unused.
+keeps the real app entrypoint in remote `main.py`. At visual simulator
+validation time, GPIO4-GPIO7 remained unused; the later unloaded output probe is
+tracked in TASK-2.10.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

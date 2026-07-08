@@ -139,6 +139,7 @@ class AppLedIntegrationTest(unittest.TestCase):
         old_status_led = app.StatusLed
         old_pwm_input = app.PwmInput
         old_safety = app.Safety
+        old_motor_outputs = app.MotorOutputs
         old_sleep_ms = app.sleep_ms
         old_ticks_us = app.ticks_us
 
@@ -159,6 +160,12 @@ class AppLedIntegrationTest(unittest.TestCase):
             def update(self, commands):
                 events.append(("led", commands))
 
+        class FakeMotorState:
+            forward_pin = 4
+            reverse_pin = 5
+            forward_duty_u16 = 8192
+            reverse_duty_u16 = 0
+
         class FakeInputs:
             def samples(self):
                 events.append(("samples", raw_samples))
@@ -168,6 +175,11 @@ class AppLedIntegrationTest(unittest.TestCase):
             def update(self, samples, now_us):
                 events.append(("safety", samples, now_us))
                 return FakeOutput()
+
+        class FakeMotorOutputs:
+            def update(self, commands):
+                events.append(("outputs", commands))
+                return (FakeMotorState(),)
 
         def fake_sleep_ms(milliseconds):
             events.append(("sleep", milliseconds))
@@ -181,6 +193,7 @@ class AppLedIntegrationTest(unittest.TestCase):
             app.StatusLed = FakeLed
             app.PwmInput = FakeInputs
             app.Safety = FakeSafety
+            app.MotorOutputs = FakeMotorOutputs
             app.sleep_ms = fake_sleep_ms
             app.ticks_us = fake_ticks_us
 
@@ -190,6 +203,7 @@ class AppLedIntegrationTest(unittest.TestCase):
             app.StatusLed = old_status_led
             app.PwmInput = old_pwm_input
             app.Safety = old_safety
+            app.MotorOutputs = old_motor_outputs
             app.sleep_ms = old_sleep_ms
             app.ticks_us = old_ticks_us
 
@@ -199,6 +213,7 @@ class AppLedIntegrationTest(unittest.TestCase):
                 ("samples", raw_samples),
                 ("ticks", 123456),
                 ("safety", raw_samples, 123456),
+                ("outputs", final_commands),
                 ("led", final_commands),
                 ("sleep", config.CONTROL_LOOP_SLEEP_MS),
             ],

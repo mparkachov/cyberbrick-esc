@@ -15,6 +15,7 @@ class AppSkeletonConfigTest(unittest.TestCase):
         self.assertEqual(config.INPUT_PINS, (1, 0))
         self.assertEqual(config.LED_DATA_PINS, (8,))
         self.assertEqual(config.LED_PIXEL_COUNTS, (1,))
+        self.assertEqual(config.MOTOR_OUTPUT_PINS, ((4, 5), (6, 7)))
 
     def test_default_signal_config(self):
         self.assertEqual(config.MIN_VALID_US, 900)
@@ -34,16 +35,24 @@ class AppSkeletonConfigTest(unittest.TestCase):
         self.assertEqual(config.CONTROL_LOOP_HZ, 50)
         self.assertEqual(config.CONTROL_LOOP_SLEEP_MS, 0)
         self.assertEqual(config.PWM_CAPTURE_TIMEOUT_US, 30000)
+        self.assertEqual(config.MOTOR_PWM_HZ, 20000)
+        self.assertEqual(config.MOTOR_PWM_MAX_DUTY_U16, 65535)
+        self.assertEqual(config.MOTOR_PWM_FULL_COMMAND_DUTY_U16, 16384)
         self.assertEqual(control_loop_sleep_ms(), 0)
 
-    def test_motor_pins_are_not_configured(self):
-        configured_pins = set(config.INPUT_PINS)
-        configured_pins.update(config.LED_DATA_PINS)
-        self.assertTrue(RESERVED_MOTOR_PINS.isdisjoint(configured_pins))
+    def test_motor_output_pins_are_not_inputs_or_leds(self):
+        configured_non_output_pins = set(config.INPUT_PINS)
+        configured_non_output_pins.update(config.LED_DATA_PINS)
+        output_pins = {pin for pair in config.MOTOR_OUTPUT_PINS for pin in pair}
 
-    def test_micro_python_source_does_not_reference_motor_pins(self):
+        self.assertEqual(output_pins, RESERVED_MOTOR_PINS)
+        self.assertTrue(RESERVED_MOTOR_PINS.isdisjoint(configured_non_output_pins))
+
+    def test_only_motor_output_module_instantiates_reserved_motor_pins(self):
         offenders = []
         for path in MICROPYTHON_ROOT.rglob("*.py"):
+            if path.name == "motor_output.py":
+                continue
             text = path.read_text()
             for pin in RESERVED_MOTOR_PINS:
                 if f"Pin({pin}" in text or f"Pin( {pin}" in text:

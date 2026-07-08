@@ -14,6 +14,7 @@ except ImportError:
 
 from cyberbrick_esc import config
 from cyberbrick_esc.led import StatusLed, rgb_from_commands
+from cyberbrick_esc.motor_output import MotorOutputs, output_diagnostic
 from cyberbrick_esc.pwm_input import PwmInput
 from cyberbrick_esc.safety import (
     Safety,
@@ -30,6 +31,7 @@ def main():
     led = StatusLed()
     inputs = PwmInput()
     safety = Safety()
+    outputs = MotorOutputs()
     sleep_time_ms = control_loop_sleep_ms()
     last_diagnostic_us = None
 
@@ -37,10 +39,11 @@ def main():
         samples = inputs.samples()
         now_us = ticks_us()
         output = safety.update(samples, now_us)
+        motor_states = outputs.update(output.commands)
         led.update(output.commands)
 
         if diagnostic_due(now_us, last_diagnostic_us):
-            print_diagnostic(samples, output, safety, now_us)
+            print_diagnostic(samples, output, safety, motor_states, now_us)
             last_diagnostic_us = now_us
 
         sleep_ms(sleep_time_ms)
@@ -59,8 +62,11 @@ def diagnostic_due(now_us, last_diagnostic_us):
 def print_startup():
     print(
         "ESC simulator starting "
-        "inputs={} led={} capture=time_pulse_us capture_timeout_us={} safety_hz_nominal={} channel_hz_nominal={} loop_sleep_ms={} diag_ms={} valid_us={}-{} neutral_us={} neutral_db_us={} endpoint_db_us={} arm_ms={} arm_grace_ms={} loss_latch_ms={} cmd_confirm_ms={} pwm_filter={}".format(
+        "inputs={} outputs={} motor_pwm_hz={} motor_full_duty_u16={} led={} capture=time_pulse_us capture_timeout_us={} safety_hz_nominal={} channel_hz_nominal={} loop_sleep_ms={} diag_ms={} valid_us={}-{} neutral_us={} neutral_db_us={} endpoint_db_us={} arm_ms={} arm_grace_ms={} loss_latch_ms={} cmd_confirm_ms={} pwm_filter={}".format(
             config.INPUT_PINS,
+            config.MOTOR_OUTPUT_PINS,
+            config.MOTOR_PWM_HZ,
+            config.MOTOR_PWM_FULL_COMMAND_DUTY_U16,
             config.LED_DATA_PINS,
             config.PWM_CAPTURE_TIMEOUT_US,
             config.CONTROL_LOOP_HZ,
@@ -81,12 +87,12 @@ def print_startup():
     )
 
 
-def print_diagnostic(samples, output, safety, now_us):
+def print_diagnostic(samples, output, safety, motor_states, now_us):
     rgb = rgb_from_commands(output.commands)
     commands = output.commands
     raw = raw_commands_from_samples(samples)
     print(
-        "ESC diag t_ms={} reason={} latch={} fault={} armed={} failsafe={} neutral_wait={} neutral_ms={} non_neutral_ms={} loss_ms={} raw={},{} cmd={},{} led={},{},{} {},{}".format(
+        "ESC diag t_ms={} reason={} latch={} fault={} armed={} failsafe={} neutral_wait={} neutral_ms={} non_neutral_ms={} loss_ms={} raw={},{} cmd={},{} {} led={},{},{} {},{}".format(
             now_us // 1000,
             diagnostic_reason(samples, output, safety, now_us, raw),
             getattr(safety, "last_latch_reason", ""),
@@ -101,6 +107,7 @@ def print_diagnostic(samples, output, safety, now_us):
             raw[1],
             commands[0],
             commands[1],
+            output_diagnostic(motor_states),
             rgb[0],
             rgb[1],
             rgb[2],

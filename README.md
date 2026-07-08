@@ -15,16 +15,17 @@ The previous Zephyr implementation is preserved on `origin/backup/zephyr`. The
 observed stock CyberBrick board reports Secure Download Mode with flash
 encryption enabled, so do not force-flash plaintext firmware to that board.
 
-The current phase runs the visual ESC simulator on the validated stock-tool
+The current phase runs the unloaded H-bridge output probe on the validated stock-tool
 workflow:
 
 ```text
-stock firmware -> manual REPL when needed -> uv run mpremote -> ESC simulator -> restore stock
+stock firmware -> manual REPL when needed -> uv run mpremote -> ESC simulator -> GPIO output probe -> restore stock
 ```
 
-The simulator is visual-only. It reads two RC PWM inputs, applies the
-center-neutral safety mapping, and shows the final safe command state on the
-onboard RGB LED. It does not drive GPIO4-GPIO7 motor outputs.
+The simulator reads two RC PWM inputs, applies the center-neutral safety
+mapping, drives unloaded H-bridge input PWM on GPIO4-GPIO7, and shows the final
+safe command state on the onboard RGB LED. Keep motors disconnected in this
+phase.
 
 ## Hardware Contract
 
@@ -44,7 +45,7 @@ Default future simulator pins:
 | ESC input 2 | Servo S4 signal | GPIO0 |
 | Onboard RGB LED | Board LED | GPIO8 |
 
-Reserved motor pins remain unused in this phase:
+Unloaded H-bridge output probe pins:
 
 | Function | GPIO |
 | --- | ---: |
@@ -55,7 +56,8 @@ Reserved motor pins remain unused in this phase:
 
 Keep motors disconnected, tracks removed, or the vehicle physically unable to
 move during bring-up. Confirm external signals are 3.3 V safe before connecting
-them to ESP32-C3 GPIO pins.
+them to ESP32-C3 GPIO pins. Confirm GPIO4-GPIO7 waveforms with a scope before
+attaching any motor load.
 
 ## Tooling
 
@@ -267,10 +269,19 @@ Expected simulator behavior:
 - A three-sample median filter rejects isolated valid pulse-width spikes.
 - Final command changes require 80 ms of confirmation before release. Failsafe
   and hard-fault paths still output zero immediately.
+- Final safe commands drive 20 kHz PWM on the H-bridge input pins:
+  - Motor 1 command uses GPIO4/GPIO5.
+  - Motor 2 command uses GPIO6/GPIO7.
+  - Positive command drives the A pin with PWM and keeps the B pin low.
+  - Negative command keeps the A pin low and drives the B pin with PWM.
+  - Neutral, failsafe, input-loss, and hard-fault states keep both pins low.
+  - For scope visibility, this experiment caps full command at duty_u16
+    `16384`, about 25% duty at 20 kHz.
+  - Half command maps to about duty_u16 `8192`, about 12.5% duty at 20 kHz.
 
-The LED is debug feedback only. Final safe commands in the diagnostic log are
-the behavior to validate for future motor output; do not treat LED smoothness as
-the motor-output stability signal.
+The LED is debug feedback only. Final safe commands and `out=` PWM diagnostics
+are the behavior to validate before attached-motor work; do not treat LED
+smoothness as the motor-output stability signal.
 
 Current hardware state:
 
@@ -280,14 +291,28 @@ Current hardware state:
 - With Raspberry Pi 50 Hz PWM on S3/S4, the simulator arms from neutral, holds
   `cmd=1000,0` for forward, holds `cmd=-1000,0` for reverse, and holds
   `cmd=1000,-1000` for the opposing endpoint tie.
-- LED feedback follows those final safe commands: blue neutral, green forward,
-  red reverse, and blue for the exact opposing tie.
+- GPIO4-GPIO7 output PWM is now enabled from those final safe commands for
+  unloaded scope measurement. LED feedback remains downstream debug: blue
+  neutral, green forward, red reverse, and blue for the exact opposing tie.
+- Deployed output diagnostics confirm GPIO4-GPIO7 duty values follow final
+  safe commands. The initial output run used full-scale duty `65535`; the
+  current scope-visibility experiment caps full command at `16384`, so
+  `cmd=1000,0` should drive GPIO4 at `16384`, `cmd=-1000,0` should drive GPIO5
+  at `16384`, `cmd=1000,-1000` should drive GPIO4 and GPIO7 at `16384`, and
+  loss states drive all four outputs to zero.
+- Scope validation has confirmed clear PWM on GPIO4 and GPIO5 with the
+  `16384` duty cap. GPIO6 and GPIO7 still need the same scope confirmation,
+  although diagnostics show the expected right-motor output states.
 - When the Raspberry Pi script disables PWM, stale input immediately outputs
   `cmd=0,0`; if input remains absent, `latch=input_loss` appears after the
   configured 1500 ms latch window.
 - The reverse transition may show one diagnostic line where `raw=-1000,0` while
   `cmd=1000,0`; this is the intentional 80 ms command-change confirmation
   window.
+- Returning from a non-neutral command to neutral can likewise show a short
+  diagnostic interval where `raw=0,0` while the prior `cmd` and `out` remain
+  active; this is the same command-change confirmation window. Failsafe and
+  persistent input-loss paths still force `out=0` on all four pins.
 
 Scope comparison showed stable electrical inputs while the former scheduled
 Python GPIO callbacks reported large deviations. Native `machine.time_pulse_us`
@@ -298,11 +323,11 @@ measurements, and then applies command confirmation. This is a measured
 stock-runtime limitation, not input-source jitter.
 
 Native polling is blocking and is not hardware edge capture. It is adequate for
-this visual PoC, but it is not evidence of deterministic timing suitable for
-motor output. On the measured 50 Hz source, expected command transition latency
-is approximately 160 ms across alternating capture, median acceptance, and the
-80 ms command confirmation window. Signal-loss evaluation is also subject to
-the 30 ms native capture timeout.
+this unloaded output probe, but it is not evidence of deterministic timing
+suitable for attached motors. On the measured 50 Hz source, expected command
+transition latency is approximately 160 ms across alternating capture, median
+acceptance, and the 80 ms command confirmation window. Signal-loss evaluation
+is also subject to the 30 ms native capture timeout.
 
 Default input behavior:
 
@@ -320,8 +345,8 @@ When miniterm is attached, the simulator prints a startup banner and diagnostic
 lines every 500 ms:
 
 ```text
-ESC simulator starting inputs=(1, 0) led=(8,) capture=time_pulse_us capture_timeout_us=30000 safety_hz_nominal=50 channel_hz_nominal=25 loop_sleep_ms=0 diag_ms=500 valid_us=900-2100 neutral_us=1500 neutral_db_us=50 endpoint_db_us=150 arm_ms=1000 arm_grace_ms=300 loss_latch_ms=1500 cmd_confirm_ms=80 pwm_filter=3
-ESC diag t_ms=1234 reason=armed latch= fault= armed=1 failsafe=0 neutral_wait=0 neutral_ms=0 non_neutral_ms=0 loss_ms=0 raw=1000,0 cmd=1000,0 led=0,255,0 ch0=2000us/v1/f1/age3ms/last2000us/cap31/rej0,ch1=1500us/v1/f1/age23ms/last1500us/cap30/rej0
+ESC simulator starting inputs=(1, 0) outputs=((4, 5), (6, 7)) motor_pwm_hz=20000 motor_full_duty_u16=16384 led=(8,) capture=time_pulse_us capture_timeout_us=30000 safety_hz_nominal=50 channel_hz_nominal=25 loop_sleep_ms=0 diag_ms=500 valid_us=900-2100 neutral_us=1500 neutral_db_us=50 endpoint_db_us=150 arm_ms=1000 arm_grace_ms=300 loss_latch_ms=1500 cmd_confirm_ms=80 pwm_filter=3
+ESC diag t_ms=1234 reason=armed latch= fault= armed=1 failsafe=0 neutral_wait=0 neutral_ms=0 non_neutral_ms=0 loss_ms=0 raw=1000,0 cmd=1000,0 out=m0:a4=16384/b5=0,m1:a6=0/b7=0 led=0,255,0 ch0=2000us/v1/f1/age3ms/last2000us/cap31/rej0,ch1=1500us/v1/f1/age23ms/last1500us/cap30/rej0
 ```
 
 Diagnostic fields:
@@ -354,6 +379,9 @@ Diagnostic fields:
 - `loss_ms` is how long an armed stale-input condition has persisted before a
   latched disarm.
 - `cmd` is the final safe command after arming and failsafe logic.
+- `out` is the actual H-bridge input PWM state derived from `cmd`. It reports
+  duty_u16 for each output pin: `m0` is Motor 1 GPIO4/GPIO5 and `m1` is Motor 2
+  GPIO6/GPIO7.
 - `led` is the RGB value written from the final safe command.
 
 Restore stock after simulator testing:
@@ -365,15 +393,13 @@ just restore-stock
 The simulator must preserve these safety boundaries:
 
 - No plaintext firmware flashing to locked stock boards.
-- No real motor output in the visual simulator milestone.
-- GPIO4-GPIO7 remain unused until a later approved motor-output task.
+- No motor load attached until GPIO4-GPIO7 output PWM is measured and reviewed.
+- GPIO4-GPIO7 may only be driven by final safe commands through
+  `motor_output`; do not write those pins from input capture, LED code, or test
+  probes.
 - Startup and failsafe recovery require valid neutral input before commands.
 
 ### Oscilloscope connections
-
-The current simulator does not generate motor-output signals. GPIO4-GPIO7 are
-reserved and intentionally unwritten, so there is no motor command waveform to
-measure in this milestone.
 
 To verify the PWM signals at the CyberBrick input:
 
@@ -386,12 +412,55 @@ The Raspberry Pi PWM source and CyberBrick must share that same ground. Use DC
 coupling and confirm the high level does not exceed 3.3 V. Do not attach a scope
 ground clip to a motor terminal or any non-ground H-bridge node.
 
-GPIO8 is the only active output in this PoC. Probing GPIO8 relative to
-CyberBrick GND shows short WS2812 data bursts when the debug color changes; it
-does not expose either numeric ESC command as a conventional PWM output.
-GPIO4/GPIO5 are reserved for future Motor 1 control and GPIO6/GPIO7 for future
-Motor 2 control, but they must not be treated as outputs until a separate
-motor-driver task implements and validates them.
+GPIO8 is debug output only. Probing GPIO8 relative to CyberBrick GND shows
+short WS2812 data bursts when the debug color changes; it does not expose
+either numeric ESC command as a conventional PWM output.
+
+To verify generated H-bridge input PWM, leave motors disconnected and probe
+each GPIO relative to CyberBrick GND:
+
+| Scope channel | Probe tip | Expected positive command | Expected negative command |
+| --- | --- | --- | --- |
+| CH1 | GPIO4 / Motor 1 input A | About 25% PWM at full command | Low |
+| CH2 | GPIO5 / Motor 1 input B | Low | About 25% PWM at full command |
+| CH3 | GPIO6 / Motor 2 input A | About 25% PWM at full command | Low |
+| CH4 | GPIO7 / Motor 2 input B | Low | About 25% PWM at full command |
+
+For neutral, failsafe, input loss, or a channel with command zero, both pins for
+that motor should stay low. The Raspberry Pi endpoint script now produces
+visible PWM because full command is capped at duty_u16 `16384` for this
+experiment. Do not attach the scope ground clip to a motor terminal or any
+non-ground H-bridge node; use CyberBrick GND only.
+
+### Raspberry Pi output sequence
+
+Use the host-side sequence to exercise left/right motor directions, neutral
+off, both-forward, both-reverse, and pivot patterns:
+
+```sh
+python3 host/raspi_s3_s4_output_sequence.py
+```
+
+Dry-run prints the expected CyberBrick diagnostics without touching Raspberry
+Pi sysfs PWM:
+
+```sh
+python3 host/raspi_s3_s4_output_sequence.py --dry-run
+```
+
+The sequence covers these expected final command/output states:
+
+| Step | S3 us | S4 us | Expected `cmd` | Expected `out` |
+| ---: | ---: | ---: | --- | --- |
+| Arm/off | 1500 | 1500 | `0,0` | `m0:a4=0/b5=0,m1:a6=0/b7=0` |
+| Left forward | 2000 | 1500 | `1000,0` | `m0:a4=16384/b5=0,m1:a6=0/b7=0` |
+| Left reverse | 1000 | 1500 | `-1000,0` | `m0:a4=0/b5=16384,m1:a6=0/b7=0` |
+| Right forward | 1500 | 2000 | `0,1000` | `m0:a4=0/b5=0,m1:a6=16384/b7=0` |
+| Right reverse | 1500 | 1000 | `0,-1000` | `m0:a4=0/b5=0,m1:a6=0/b7=16384` |
+| Both forward | 2000 | 2000 | `1000,1000` | `m0:a4=16384/b5=0,m1:a6=16384/b7=0` |
+| Both reverse | 1000 | 1000 | `-1000,-1000` | `m0:a4=0/b5=16384,m1:a6=0/b7=16384` |
+| Pivot left | 1000 | 2000 | `-1000,1000` | `m0:a4=0/b5=16384,m1:a6=16384/b7=0` |
+| Pivot right | 2000 | 1000 | `1000,-1000` | `m0:a4=16384/b5=0,m1:a6=0/b7=16384` |
 
 ## Host Checks
 
@@ -408,6 +477,8 @@ just --list
 pyproject.toml
 uv.lock
 justfile
+host/
+  raspi_s3_s4_output_sequence.py
 micropython/
   main.py
   examples/
@@ -420,6 +491,7 @@ micropython/
       app.py
       config.py
       led.py
+      motor_output.py
       pixels.py
       pwm_input.py
       safety.py

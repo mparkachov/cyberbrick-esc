@@ -24,7 +24,8 @@ ordinal: 10400
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Create the MicroPython app entrypoint, package layout, and safe default configuration for the visual ESC simulator.
+Create the MicroPython app entrypoint, package layout, and safe default
+configuration for the initial visual ESC simulator.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
@@ -32,7 +33,7 @@ Create the MicroPython app entrypoint, package layout, and safe default configur
 - [x] #1 Config defines GPIO1/GPIO0 inputs and the onboard WS2812 LED on GPIO8.
 - [x] #2 Config defines 900-2100 us valid range, 1000/1500/2000 us command mapping, 50 us deadband, 150 ms failsafe, 1000 ms neutral arming, and capture-driven nominal 50 Hz safety evaluation.
 - [x] #3 App entrypoint initializes LED, input capture, and safety mapping.
-- [x] #4 No motor output pins are configured or written.
+- [x] #4 At the initial visual-simulator stage, no motor output pins were configured or written.
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -52,5 +53,6 @@ channel at 25 Hz, with no additional loop sleep. Configuration centralizes
 GPIO1/GPIO0 inputs, the onboard WS2812 LED on GPIO8, pulse timing defaults,
 failsafe timing, neutral arming, and capture timeout. Host tests verify the
 default skeleton configuration and that reserved motor pins GPIO4-GPIO7 are not
-configured or directly referenced by MicroPython source.
+configured or directly referenced by MicroPython source. The later unloaded
+GPIO output probe is tracked separately in TASK-2.10.
 <!-- SECTION:FINAL_SUMMARY:END -->

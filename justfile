@@ -89,4 +89,4 @@ restore-stock:
 
 test:
     uv run python -m unittest discover -s tests
-    uv run python -m py_compile micropython/main.py micropython/examples/*.py micropython/lib/cyberbrick_esc/*.py tests/*.py
+    uv run python -m py_compile host/*.py micropython/main.py micropython/examples/*.py micropython/lib/cyberbrick_esc/*.py tests/*.py

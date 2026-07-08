@@ -18,9 +18,10 @@ Do not force-flash plaintext firmware to such a board. Treat it as not
 Zephyr-flashable unless a maintainer provides an approved signed/encrypted or
 vendor-compatible update flow.
 
-The active phase is stock-tool ESC simulator deployment on top of the validated
-Phase 1 workflow. Keep the board workflow on `uv`, stock `mpremote`, manual
-miniterm recovery when needed, and restore-to-stock through `boot.stock.py`.
+The active phase is unloaded H-bridge PWM output probing on top of the
+validated stock-tool ESC simulator workflow. Keep the board workflow on `uv`,
+stock `mpremote`, manual miniterm recovery when needed, and restore-to-stock
+through `boot.stock.py`.
 
 ## Mission And Scope
 
@@ -30,9 +31,9 @@ The long-term mission is a center-neutral dual brushed ESC path:
 Two center-neutral RC PWM inputs -> safe command mapping -> final safe commands
 ```
 
-Future motor output must be driven from the final safe commands. The current
-visual PoC taps those final safe commands into the RGB LED only as debug
-feedback.
+Motor output must be driven from the final safe commands. The current output
+probe drives unloaded H-bridge input PWM on GPIO4-GPIO7 and taps those same
+final safe commands into the RGB LED only as debug feedback.
 
 Default future simulator signal behavior:
 
@@ -54,9 +55,9 @@ accurate but still has rare preemption outliers and is not hardware capture.
 Treat the expected roughly 160 ms command-transition latency and non-
 deterministic capture timing as stock-runtime PoC limitations.
 
-Active hardware work is still visual-only: stock-tool blink/restore and the
-MicroPython ESC simulator. The simulator reads inputs and drives only the RGB
-LED feedback path.
+Active hardware work is unloaded output probing: stock-tool blink/restore and
+the MicroPython ESC simulator with GPIO4-GPIO7 H-bridge input PWM. Motors must
+remain disconnected until scope measurements validate the generated signals.
 
 ## Output Priority
 
@@ -84,7 +85,8 @@ downstream-only:
 Do not implement these features by default:
 
 - Plaintext firmware flashing to locked stock boards.
-- Real motor output from the MicroPython simulator.
+- Attached-motor operation from the MicroPython simulator before unloaded scope
+  validation.
 - MAVLink, MSP, CRSF, SBUS, iBUS, UART command input, DShot, OneShot, or
   Multishot input.
 - Wi-Fi, Bluetooth, web UI, OTA update logic, or CyberBrick stock protocol
@@ -135,14 +137,14 @@ Known target hardware:
 - Runtime: stock CyberBrick MicroPython firmware with REPL access.
 - Status LED: onboard WS2812/NeoPixel on GPIO8.
 
-Future simulator input pins:
+Simulator input pins:
 
 | Function | Connector | GPIO |
 | --- | --- | ---: |
 | ESC input 1 | Servo S3 signal | GPIO1 |
 | ESC input 2 | Servo S4 signal | GPIO0 |
 
-Reserved motor pins:
+Unloaded H-bridge output pins:
 
 | Function | GPIO |
 | --- | ---: |
@@ -151,9 +153,9 @@ Reserved motor pins:
 | Motor 2 input A | GPIO6 |
 | Motor 2 input B | GPIO7 |
 
-GPIO4-GPIO7 must remain unused until a later maintainer-approved motor-output
-task. Avoid GPIO2, GPIO18, GPIO19, GPIO20, and GPIO21 unless a maintainer
-explicitly changes the hardware contract.
+GPIO4-GPIO7 may only be written by `cyberbrick_esc.motor_output` from final
+safe commands. Avoid GPIO2, GPIO18, GPIO19, GPIO20, and GPIO21 unless a
+maintainer explicitly changes the hardware contract.
 
 ## Architecture Expectations
 
@@ -163,6 +165,8 @@ Expected active layout:
 pyproject.toml
 uv.lock
 justfile
+host/
+  raspi_s3_s4_output_sequence.py
 micropython/
   main.py
   examples/
@@ -172,6 +176,7 @@ micropython/
     pwm_timing_ram.py
   lib/
     cyberbrick_esc/
+      motor_output.py
 tests/
 README.md
 AGENTS.md
@@ -182,7 +187,9 @@ deployed by `just deploy` and remain modular:
 
 - `pwm_input` owns GPIO input capture.
 - `safety` owns arming, failsafe, and command mapping.
-- `led` owns visual-only RGB feedback.
+- `motor_output` owns GPIO4-GPIO7 H-bridge input PWM derived from final safe
+  commands.
+- `led` owns visual-only RGB feedback derived from final safe commands.
 - `app` wires the simulator modules together.
 
 ## Testing Requirements
@@ -220,8 +227,9 @@ Documentation must be explicit about:
 - Manual REPL recovery from stock solid green.
 - `uv` and stock `mpremote` as the supported workflow.
 - RAM blink, persistent blink, and restore stock.
-- ESC simulator deploy and visual RGB command behavior.
-- 3.3 V signal limits and reserved motor pins.
+- ESC simulator deploy, GPIO4-GPIO7 output PWM behavior, and visual RGB command
+  behavior.
+- 3.3 V signal limits, output scope points, and no-motor-load bring-up.
 - Which features are intentionally unsupported.
 
 Do not describe this project as a complete BLHeli, DShot, or universal ESC
