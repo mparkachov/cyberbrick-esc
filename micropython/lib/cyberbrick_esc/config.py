@@ -4,9 +4,11 @@ INPUT_PINS = (1, 0)
 LED_DATA_PINS = (8,)
 LED_PIXEL_COUNTS = (1,)
 MOTOR_OUTPUT_PINS = ((4, 5), (6, 7))
+# Mini Tank M1 is the right track with positive polarity. M2 is the left track
+# and is mounted with opposite vehicle-forward polarity.
+MOTOR_OUTPUT_INVERTED = (False, True)
 MOTOR_PWM_HZ = 20000
 MOTOR_PWM_MAX_DUTY_U16 = 65535
-MOTOR_PWM_FULL_COMMAND_DUTY_U16 = 16384
 
 COMMAND_MIN = -1000
 COMMAND_NEUTRAL = 0

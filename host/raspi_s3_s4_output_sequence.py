@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 
+import argparse
 import os
 import signal
 import sys
 import time
-import argparse
 from dataclasses import dataclass
 
 
 PWMCHIP = "/sys/class/pwm/pwmchip0"
 
 # Default dtoverlay=pwm-2chan mapping:
-# pwm0 = GPIO18 = physical pin 12 = CH1 = S3 = Motor 1 input
-# pwm1 = GPIO19 = physical pin 35 = CH2 = S4 = Motor 2 input
+# pwm0 = GPIO18 = physical pin 12 = CH1 = S3 = Motor 1/right input
+# pwm1 = GPIO19 = physical pin 35 = CH2 = S4 = Motor 2/left input
 S3_CHANNEL = 0
 S4_CHANNEL = 1
 
@@ -21,8 +21,8 @@ ARM_DURATION_SEC = 2.0
 ACTIVE_DURATION_SEC = 5.0
 NEUTRAL_DURATION_SEC = 1.5
 
-# Keep this in sync with cyberbrick_esc.config.MOTOR_PWM_FULL_COMMAND_DUTY_U16.
-OUTPUT_DUTY_U16 = 16_384
+# Keep this in sync with cyberbrick_esc.config.MOTOR_PWM_MAX_DUTY_U16.
+OUTPUT_DUTY_U16 = 65_535
 
 running = True
 
@@ -102,7 +102,9 @@ def pulse_to_command(pulse_us: int) -> int:
     return 0
 
 
-def motor_output(command: int, positive_pin: int, negative_pin: int) -> tuple[int, int]:
+def motor_output(command: int, inverted: bool = False) -> tuple[int, int]:
+    if inverted:
+        command = -command
     if command > 0:
         return OUTPUT_DUTY_U16, 0
     if command < 0:
@@ -121,13 +123,13 @@ def led_name(left_command: int, right_command: int) -> str:
 
 
 def expected_for_step(step: Step) -> tuple[str, str, str]:
-    left_command = pulse_to_command(step.s3_us)
-    right_command = pulse_to_command(step.s4_us)
-    gpio4, gpio5 = motor_output(left_command, 4, 5)
-    gpio6, gpio7 = motor_output(right_command, 6, 7)
-    command_text = f"cmd={left_command},{right_command}"
+    motor1_command = pulse_to_command(step.s3_us)
+    motor2_command = pulse_to_command(step.s4_us)
+    gpio4, gpio5 = motor_output(motor1_command)
+    gpio6, gpio7 = motor_output(motor2_command, inverted=True)
+    command_text = f"cmd={motor1_command},{motor2_command}"
     output_text = f"out=m0:a4={gpio4}/b5={gpio5},m1:a6={gpio6}/b7={gpio7}"
-    return command_text, output_text, led_name(left_command, right_command)
+    return command_text, output_text, led_name(motor1_command, motor2_command)
 
 
 def run_step(index: int, step: Step, dry_run: bool) -> None:
@@ -155,21 +157,21 @@ def neutral_step(name: str) -> Step:
 def test_sequence() -> tuple[Step, ...]:
     return (
         Step("Arm and verify both motors neutral/off", 1500, 1500, ARM_DURATION_SEC),
-        Step("Left motor full forward command; right neutral/off", 2000, 1500, ACTIVE_DURATION_SEC),
+        Step("Right/Motor 1 full forward command; left neutral/off", 2000, 1500, ACTIVE_DURATION_SEC),
         neutral_step("Both motors neutral/off"),
-        Step("Left motor full reverse command; right neutral/off", 1000, 1500, ACTIVE_DURATION_SEC),
+        Step("Right/Motor 1 full reverse command; left neutral/off", 1000, 1500, ACTIVE_DURATION_SEC),
         neutral_step("Both motors neutral/off"),
-        Step("Right motor full forward command; left neutral/off", 1500, 2000, ACTIVE_DURATION_SEC),
+        Step("Left/Motor 2 full forward command; right neutral/off", 1500, 2000, ACTIVE_DURATION_SEC),
         neutral_step("Both motors neutral/off"),
-        Step("Right motor full reverse command; left neutral/off", 1500, 1000, ACTIVE_DURATION_SEC),
+        Step("Left/Motor 2 full reverse command; right neutral/off", 1500, 1000, ACTIVE_DURATION_SEC),
         neutral_step("Both motors neutral/off"),
         Step("Both motors full forward command", 2000, 2000, ACTIVE_DURATION_SEC),
         neutral_step("Both motors neutral/off"),
         Step("Both motors full reverse command", 1000, 1000, ACTIVE_DURATION_SEC),
         neutral_step("Both motors neutral/off"),
-        Step("Pivot left pattern: left reverse, right forward", 1000, 2000, ACTIVE_DURATION_SEC),
+        Step("Pivot left pattern: left reverse, right forward", 2000, 1000, ACTIVE_DURATION_SEC),
         neutral_step("Both motors neutral/off"),
-        Step("Pivot right pattern: left forward, right reverse", 2000, 1000, ACTIVE_DURATION_SEC),
+        Step("Pivot right pattern: left forward, right reverse", 1000, 2000, ACTIVE_DURATION_SEC),
     )
 
 
@@ -206,10 +208,10 @@ def main() -> None:
     signal.signal(signal.SIGTERM, handle_stop)
 
     print("S3/S4 RC PWM output validation")
-    print("CH1: GPIO18 / physical pin 12 -> S3 -> left/Motor 1 -> GPIO4/GPIO5")
-    print("CH2: GPIO19 / physical pin 35 -> S4 -> right/Motor 2 -> GPIO6/GPIO7")
+    print("CH1: GPIO18 / physical pin 12 -> S3 -> right/Motor 1 -> GPIO4/GPIO5")
+    print("CH2: GPIO19 / physical pin 35 -> S4 -> left/Motor 2 -> GPIO6/GPIO7 (inverted)")
     print(f"Expected CyberBrick output duty for full command: {OUTPUT_DUTY_U16}")
-    print("GND must be connected first. Motors must stay disconnected.")
+    print("GND must be connected first. For motor tests, lift both tracks and restrain the chassis.")
     if args.dry_run:
         print("Dry run: not exporting or driving Raspberry Pi PWM.")
 

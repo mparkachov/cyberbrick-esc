@@ -16,6 +16,7 @@ class AppSkeletonConfigTest(unittest.TestCase):
         self.assertEqual(config.LED_DATA_PINS, (8,))
         self.assertEqual(config.LED_PIXEL_COUNTS, (1,))
         self.assertEqual(config.MOTOR_OUTPUT_PINS, ((4, 5), (6, 7)))
+        self.assertEqual(config.MOTOR_OUTPUT_INVERTED, (False, True))
 
     def test_default_signal_config(self):
         self.assertEqual(config.MIN_VALID_US, 900)
@@ -37,7 +38,6 @@ class AppSkeletonConfigTest(unittest.TestCase):
         self.assertEqual(config.PWM_CAPTURE_TIMEOUT_US, 30000)
         self.assertEqual(config.MOTOR_PWM_HZ, 20000)
         self.assertEqual(config.MOTOR_PWM_MAX_DUTY_U16, 65535)
-        self.assertEqual(config.MOTOR_PWM_FULL_COMMAND_DUTY_U16, 16384)
         self.assertEqual(control_loop_sleep_ms(), 0)
 
     def test_motor_output_pins_are_not_inputs_or_leds(self):

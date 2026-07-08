@@ -161,10 +161,10 @@ class AppLedIntegrationTest(unittest.TestCase):
                 events.append(("led", commands))
 
         class FakeMotorState:
-            forward_pin = 4
-            reverse_pin = 5
-            forward_duty_u16 = 8192
-            reverse_duty_u16 = 0
+            a_pin = 4
+            b_pin = 5
+            a_duty_u16 = 32768
+            b_duty_u16 = 0
 
         class FakeInputs:
             def samples(self):

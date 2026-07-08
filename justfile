@@ -37,9 +37,6 @@ mp-backup:
 run-blink:
     uv run mpremote connect "{{device}}" resume run micropython/examples/blink_main.py
 
-run-pwm-timing:
-    uv run mpremote connect "{{device}}" resume run micropython/examples/pwm_timing_ram.py
-
 deploy-blink:
     #!/usr/bin/env bash
     set -euo pipefail

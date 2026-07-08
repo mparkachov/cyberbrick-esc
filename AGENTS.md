@@ -18,10 +18,10 @@ Do not force-flash plaintext firmware to such a board. Treat it as not
 Zephyr-flashable unless a maintainer provides an approved signed/encrypted or
 vendor-compatible update flow.
 
-The active phase is unloaded H-bridge PWM output probing on top of the
-validated stock-tool ESC simulator workflow. Keep the board workflow on `uv`,
-stock `mpremote`, manual miniterm recovery when needed, and restore-to-stock
-through `boot.stock.py`.
+The active phase is controlled Mini Tank motor-direction validation after the
+unloaded H-bridge output check. Keep the board workflow on `uv`, stock
+`mpremote`, manual miniterm recovery when needed, and restore-to-stock through
+`boot.stock.py`.
 
 ## Mission And Scope
 
@@ -32,8 +32,8 @@ Two center-neutral RC PWM inputs -> safe command mapping -> final safe commands
 ```
 
 Motor output must be driven from the final safe commands. The current output
-probe drives unloaded H-bridge input PWM on GPIO4-GPIO7 and taps those same
-final safe commands into the RGB LED only as debug feedback.
+path drives H-bridge input PWM on GPIO4-GPIO7 and taps those same final safe
+commands into the RGB LED only as debug feedback.
 
 Default future simulator signal behavior:
 
@@ -55,9 +55,11 @@ accurate but still has rare preemption outliers and is not hardware capture.
 Treat the expected roughly 160 ms command-transition latency and non-
 deterministic capture timing as stock-runtime PoC limitations.
 
-Active hardware work is unloaded output probing: stock-tool blink/restore and
-the MicroPython ESC simulator with GPIO4-GPIO7 H-bridge input PWM. Motors must
-remain disconnected until scope measurements validate the generated signals.
+Active hardware work validates Mini Tank motor direction with tracks lifted or
+the chassis otherwise restrained. The official Mini Tank configuration maps
+Motor 1 with positive polarity and Motor 2 with negative polarity. Preserve
+that per-channel physical translation without changing final safe command
+semantics.
 
 ## Output Priority
 
@@ -85,8 +87,7 @@ downstream-only:
 Do not implement these features by default:
 
 - Plaintext firmware flashing to locked stock boards.
-- Attached-motor operation from the MicroPython simulator before unloaded scope
-  validation.
+- Unrestrained or unattended attached-motor operation.
 - MAVLink, MSP, CRSF, SBUS, iBUS, UART command input, DShot, OneShot, or
   Multishot input.
 - Wi-Fi, Bluetooth, web UI, OTA update logic, or CyberBrick stock protocol
@@ -111,7 +112,6 @@ Allowed board commands:
 - `uv run mpremote connect list`
 - `uv run mpremote connect <device> resume repl`
 - `uv run mpremote connect <device> resume run micropython/examples/blink_main.py`
-- `uv run mpremote connect <device> resume run micropython/examples/pwm_timing_ram.py`
 - `uv run mpremote connect <device> resume fs ...`
 - `uv run python -m serial.tools.miniterm --raw --dtr 0 --rts 0 <device> 115200`
 - `DEVICE=<device> just miniterm`
@@ -144,18 +144,25 @@ Simulator input pins:
 | ESC input 1 | Servo S3 signal | GPIO1 |
 | ESC input 2 | Servo S4 signal | GPIO0 |
 
-Unloaded H-bridge output pins:
+H-bridge input PWM pins:
 
 | Function | GPIO |
 | --- | ---: |
-| Motor 1 input A | GPIO4 |
-| Motor 1 input B | GPIO5 |
-| Motor 2 input A | GPIO6 |
-| Motor 2 input B | GPIO7 |
+| Motor 1/right input A | GPIO4 |
+| Motor 1/right input B | GPIO5 |
+| Motor 2/left input A | GPIO6 |
+| Motor 2/left input B | GPIO7 |
 
 GPIO4-GPIO7 may only be written by `cyberbrick_esc.motor_output` from final
 safe commands. Avoid GPIO2, GPIO18, GPIO19, GPIO20, and GPIO21 unless a
 maintainer explicitly changes the hardware contract.
+
+Mini Tank direction is vehicle-relative:
+
+- Motor 1/right is not inverted: positive command drives GPIO4.
+- Motor 2/left is inverted: positive command drives GPIO7.
+- Equal positive commands must drive both tracks forward.
+- Opposite commands must drive the tracks in opposite vehicle directions.
 
 ## Architecture Expectations
 
@@ -173,7 +180,6 @@ micropython/
     blink_boot.py
     blink_main.py
     esc_boot.py
-    pwm_timing_ram.py
   lib/
     cyberbrick_esc/
       motor_output.py
@@ -208,7 +214,6 @@ Manual hardware validation:
 ```sh
 uv run mpremote connect list
 just run-blink
-just run-pwm-timing
 just deploy-blink
 just deploy
 just restore-stock
@@ -227,9 +232,10 @@ Documentation must be explicit about:
 - Manual REPL recovery from stock solid green.
 - `uv` and stock `mpremote` as the supported workflow.
 - RAM blink, persistent blink, and restore stock.
-- ESC simulator deploy, GPIO4-GPIO7 output PWM behavior, and visual RGB command
-  behavior.
-- 3.3 V signal limits, output scope points, and no-motor-load bring-up.
+- ESC simulator deploy, GPIO4-GPIO7 output PWM behavior, Mini Tank motor
+  polarity, unloaded motor-output voltage checks, and visual RGB behavior.
+- 3.3 V signal limits, motor terminal measurement points, no-motor-load
+  bring-up, and restrained attached-motor validation.
 - Which features are intentionally unsupported.
 
 Do not describe this project as a complete BLHeli, DShot, or universal ESC

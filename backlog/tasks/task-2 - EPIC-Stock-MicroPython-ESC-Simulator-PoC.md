@@ -41,7 +41,7 @@ Prove the stock CyberBrick MicroPython runtime can host the ESC simulator path w
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Keep this as stock-runtime MicroPython work on `main`. The previous Zephyr implementation is preserved on `origin/backup/zephyr`; do not reintroduce plaintext flashing for stock locked boards. GPIO4-GPIO7 output probing is allowed only through TASK-2.10, only from final safe commands, and only with no motor load attached.
+Keep this as stock-runtime MicroPython work on `main`. The previous Zephyr implementation is preserved on `origin/backup/zephyr`; do not reintroduce plaintext flashing for stock locked boards. GPIO4-GPIO7 may be driven only through TASK-2.10 and only from final safe commands. Attached-motor checks require the Mini Tank to be restrained with tracks lifted.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
@@ -51,19 +51,21 @@ The stock-firmware MicroPython ESC simulator PoC is validated. The repo has a
 confirmed `uv`-managed workflow using stock `mpremote`, manual miniterm recovery
 from the stock solid-green app, RAM blink, persistent boot blink, and
 restore-to-stock. Phase 2 deployment is implemented through `just deploy`, which
-installs the ESC simulator using the same stock-tool workflow. Scope comparison
+installs the ESC simulator using the same stock-tool workflow. Timing comparison
 established that the original scheduled Python GPIO callbacks distorted pulse
 timing even with stable input. The active implementation now alternates native
 `machine.time_pulse_us` capture and keeps the median and safety filters
-explicit in the final command path. The
-standalone RAM probe verifies that native polling is normally accurate to about
-1 us but still has rare runtime-preemption outliers. Integrated native-capture
-hardware validation confirms the deployed app starts after reset/power-cycle,
+explicit in the final command path. Hardware timing evidence showed native
+polling is normally accurate to about 1 us but still has rare
+runtime-preemption outliers. Integrated native-capture hardware validation
+confirms the deployed app starts after reset/power-cycle,
 arms from neutral, follows forward/reverse/opposing-tie PWM commands in the
 final safe command stream, and enters the documented stale-input and
 `input_loss` states when PWM stops. The next active step is TASK-2.10: unloaded
 GPIO4-GPIO7 H-bridge input PWM generated from those final safe commands and
-validated first through diagnostics and scope measurements. Diagnostic
-validation now confirms `out=` follows final safe commands; GPIO4-GPIO7 scope
-validation remains open.
+validated through diagnostics and unloaded motor-output voltage measurement.
+Diagnostic validation confirms `out=` follows final safe commands. Physical
+testing identified the Mini Tank's mirrored motor polarity; the output
+translation now follows the published Motor 1 positive/Motor 2 negative mapping.
+Restrained forward/reverse/pivot validation remains open.
 <!-- SECTION:FINAL_SUMMARY:END -->

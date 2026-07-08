@@ -62,11 +62,12 @@ def diagnostic_due(now_us, last_diagnostic_us):
 def print_startup():
     print(
         "ESC simulator starting "
-        "inputs={} outputs={} motor_pwm_hz={} motor_full_duty_u16={} led={} capture=time_pulse_us capture_timeout_us={} safety_hz_nominal={} channel_hz_nominal={} loop_sleep_ms={} diag_ms={} valid_us={}-{} neutral_us={} neutral_db_us={} endpoint_db_us={} arm_ms={} arm_grace_ms={} loss_latch_ms={} cmd_confirm_ms={} pwm_filter={}".format(
+        "inputs={} outputs={} motor_inverted={} motor_pwm_hz={} motor_max_duty_u16={} led={} capture=time_pulse_us capture_timeout_us={} safety_hz_nominal={} channel_hz_nominal={} loop_sleep_ms={} diag_ms={} valid_us={}-{} neutral_us={} neutral_db_us={} endpoint_db_us={} arm_ms={} arm_grace_ms={} loss_latch_ms={} cmd_confirm_ms={} pwm_filter={}".format(
             config.INPUT_PINS,
             config.MOTOR_OUTPUT_PINS,
+            config.MOTOR_OUTPUT_INVERTED,
             config.MOTOR_PWM_HZ,
-            config.MOTOR_PWM_FULL_COMMAND_DUTY_U16,
+            config.MOTOR_PWM_MAX_DUTY_U16,
             config.LED_DATA_PINS,
             config.PWM_CAPTURE_TIMEOUT_US,
             config.CONTROL_LOOP_HZ,

@@ -54,34 +54,54 @@ class MotorOutputTest(unittest.TestCase):
 
         states = outputs.update([1000, -500])
 
-        self.assertEqual(states[0].forward_pin, 4)
-        self.assertEqual(states[0].reverse_pin, 5)
-        self.assertEqual(states[0].forward_duty_u16, config.MOTOR_PWM_FULL_COMMAND_DUTY_U16)
-        self.assertEqual(states[0].reverse_duty_u16, 0)
-        self.assertEqual(states[1].forward_pin, 6)
-        self.assertEqual(states[1].reverse_pin, 7)
-        self.assertEqual(states[1].forward_duty_u16, 0)
-        self.assertEqual(states[1].reverse_duty_u16, 8192)
+        self.assertEqual(states[0].a_pin, 4)
+        self.assertEqual(states[0].b_pin, 5)
+        self.assertEqual(states[0].a_duty_u16, config.MOTOR_PWM_MAX_DUTY_U16)
+        self.assertEqual(states[0].b_duty_u16, 0)
+        self.assertEqual(states[1].a_pin, 6)
+        self.assertEqual(states[1].b_pin, 7)
+        self.assertEqual(states[1].a_duty_u16, 32768)
+        self.assertEqual(states[1].b_duty_u16, 0)
+
+    def test_positive_vehicle_command_inverts_motor_2_hbridge_polarity(self):
+        outputs = motor_output.MotorOutputs()
+
+        states = outputs.update([1000, 1000])
+
+        self.assertEqual(states[0].a_duty_u16, config.MOTOR_PWM_MAX_DUTY_U16)
+        self.assertEqual(states[0].b_duty_u16, 0)
+        self.assertEqual(states[1].a_duty_u16, 0)
+        self.assertEqual(states[1].b_duty_u16, config.MOTOR_PWM_MAX_DUTY_U16)
 
     def test_neutral_and_malformed_commands_drive_both_sides_low(self):
         outputs = motor_output.MotorOutputs()
 
         states = outputs.update([True, "1000"])
 
-        self.assertEqual(states[0].forward_duty_u16, 0)
-        self.assertEqual(states[0].reverse_duty_u16, 0)
-        self.assertEqual(states[1].forward_duty_u16, 0)
-        self.assertEqual(states[1].reverse_duty_u16, 0)
+        self.assertEqual(states[0].a_duty_u16, 0)
+        self.assertEqual(states[0].b_duty_u16, 0)
+        self.assertEqual(states[1].a_duty_u16, 0)
+        self.assertEqual(states[1].b_duty_u16, 0)
 
     def test_direction_change_zeroes_previous_side_before_driving_new_side(self):
         outputs = motor_output.MotorOutputs()
         outputs.update([1000, 0])
         outputs.update([-1000, 0])
 
-        forward_pwm = FakePWM.instances[0]
-        reverse_pwm = FakePWM.instances[1]
-        self.assertEqual(forward_pwm.duties[-2:], [config.MOTOR_PWM_FULL_COMMAND_DUTY_U16, 0])
-        self.assertEqual(reverse_pwm.duties[-2:], [0, config.MOTOR_PWM_FULL_COMMAND_DUTY_U16])
+        a_pwm = FakePWM.instances[0]
+        b_pwm = FakePWM.instances[1]
+        self.assertEqual(a_pwm.duties[-2:], [config.MOTOR_PWM_MAX_DUTY_U16, 0])
+        self.assertEqual(b_pwm.duties[-2:], [0, config.MOTOR_PWM_MAX_DUTY_U16])
+
+    def test_inverted_direction_change_zeroes_previous_side_first(self):
+        outputs = motor_output.MotorOutputs()
+        outputs.update([0, 1000])
+        outputs.update([0, -1000])
+
+        a_pwm = FakePWM.instances[2]
+        b_pwm = FakePWM.instances[3]
+        self.assertEqual(a_pwm.duties[-2:], [0, config.MOTOR_PWM_MAX_DUTY_U16])
+        self.assertEqual(b_pwm.duties[-2:], [config.MOTOR_PWM_MAX_DUTY_U16, 0])
 
     def test_output_state_objects_are_reused(self):
         outputs = motor_output.MotorOutputs()
@@ -90,8 +110,8 @@ class MotorOutputTest(unittest.TestCase):
         second = outputs.update([1000, -1000])
 
         self.assertIs(first, second)
-        self.assertEqual(first[0].forward_duty_u16, config.MOTOR_PWM_FULL_COMMAND_DUTY_U16)
-        self.assertEqual(first[1].reverse_duty_u16, config.MOTOR_PWM_FULL_COMMAND_DUTY_U16)
+        self.assertEqual(first[0].a_duty_u16, config.MOTOR_PWM_MAX_DUTY_U16)
+        self.assertEqual(first[1].a_duty_u16, config.MOTOR_PWM_MAX_DUTY_U16)
 
     def test_redundant_pwm_writes_are_skipped_for_stable_commands(self):
         outputs = motor_output.MotorOutputs()
@@ -108,15 +128,19 @@ class MotorOutputTest(unittest.TestCase):
 
         self.assertEqual(
             motor_output.output_diagnostic(states),
-            "out=m0:a4=16384/b5=0,m1:a6=0/b7=16384",
+            "out=m0:a4=65535/b5=0,m1:a6=65535/b7=0",
         )
+
+    def test_rejects_mismatched_pin_and_inversion_counts(self):
+        with self.assertRaises(ValueError):
+            motor_output.MotorOutputs(channel_inverted=(False,))
 
     def test_command_to_duty_clamps_to_supported_range(self):
         self.assertEqual(motor_output.command_to_duty_u16(0), 0)
-        self.assertEqual(motor_output.command_to_duty_u16(500), 8192)
-        self.assertEqual(motor_output.command_to_duty_u16(-500), 8192)
-        self.assertEqual(motor_output.command_to_duty_u16(5000), 16384)
-        self.assertEqual(motor_output.command_to_duty_u16(-5000), 16384)
+        self.assertEqual(motor_output.command_to_duty_u16(500), 32768)
+        self.assertEqual(motor_output.command_to_duty_u16(-500), 32768)
+        self.assertEqual(motor_output.command_to_duty_u16(5000), 65535)
+        self.assertEqual(motor_output.command_to_duty_u16(-5000), 65535)
         self.assertEqual(motor_output.command_to_duty_u16("500"), 0)
 
 
