@@ -13,3 +13,5 @@ __pycache__/
 device-backups/
 *.pyc
 *.pyo
+
+.DS_Store
